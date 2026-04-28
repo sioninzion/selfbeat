@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>셀-프 리듬게임 ver2.0</title>
+<title>셀-프 리듬게임 ver2.1</title>
 <style>
   :root{
     --bg:#07070c;
@@ -41,8 +41,9 @@
   }
   button:active{transform:scale(.96)}
   .version{
-    position:fixed;top:14px;right:16px;z-index:50;
+    position:fixed;top:14px;right:16px;z-index:60;
     color:rgba(255,255,255,.72);font-size:13px;font-weight:700;
+    background:rgba(0,0,0,.28);padding:6px 10px;border-radius:999px;
   }
   .screen{position:fixed;inset:0;display:none}
   .screen.active{display:block}
@@ -128,15 +129,31 @@
   .toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
   #game{background:#060612}
   .hud{
-    position:absolute;left:0;right:0;top:0;height:78px;padding:12px 16px;
-    display:flex;align-items:center;justify-content:space-between;z-index:20;
-    background:linear-gradient(rgba(0,0,0,.55),transparent);
+    position:absolute;left:0;right:0;top:0;height:102px;padding:12px 86px 14px 16px;
+    display:grid;grid-template-columns:1fr auto;grid-template-rows:auto auto;gap:8px 12px;z-index:20;
+    background:linear-gradient(rgba(0,0,0,.7),transparent);
   }
   .hudTitle{font-weight:900}
   .hudSub{color:var(--muted);font-size:13px}
-  .score{font-weight:900;font-size:20px;text-align:right}
+  .score{
+    font-weight:1000;font-size:clamp(30px,5.8vw,52px);text-align:right;line-height:.92;
+    text-shadow:0 0 22px rgba(255,255,255,.18);
+  }
+  .progressHud{
+    grid-column:1 / 3;
+    display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;
+  }
+  .songProgressOuter{
+    height:9px;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden;
+    border:1px solid rgba(255,255,255,.08);
+  }
+  .songProgressInner{
+    width:0%;height:100%;background:linear-gradient(90deg,#56e39f,#6cc8ff,#ff5f9e);
+    transition:.08s linear width;
+  }
+  .songProgressText{font-size:13px;color:rgba(255,255,255,.86);font-weight:900;min-width:42px;text-align:right}
   .laneWrap{
-    position:absolute;left:50%;top:82px;bottom:128px;transform:translateX(-50%);
+    position:absolute;left:50%;top:108px;bottom:128px;transform:translateX(-50%);
     width:min(96vw,620px);display:grid;grid-template-columns:repeat(4,1fr);gap:8px;
   }
   .lane{
@@ -170,10 +187,31 @@
     width:min(96vw,620px);display:grid;grid-template-columns:repeat(4,1fr);gap:8px;z-index:30;
   }
   .pad{
-    height:84px;border-radius:24px;font-size:38px;background:rgba(255,255,255,.13);
+    position:relative;height:84px;border-radius:24px;font-size:35px;background:rgba(255,255,255,.13);
     border:1px solid rgba(255,255,255,.18);
+    display:flex;align-items:center;justify-content:center;flex-direction:column;gap:2px;
   }
-  .pad.active{background:rgba(255,255,255,.28);transform:scale(.97)}
+  .pad .key{
+    font-size:13px;font-weight:1000;letter-spacing:.08em;color:rgba(255,255,255,.78);
+    background:rgba(0,0,0,.26);padding:2px 8px;border-radius:999px;
+  }
+  .pad.active,.pad.keyflash{
+    background:rgba(255,255,255,.28);transform:scale(.97);
+    box-shadow:0 0 28px rgba(255,255,255,.78), inset 0 0 22px rgba(255,255,255,.2);
+    border-color:rgba(255,255,255,.95);
+  }
+  .pad.flash-perfect{
+    box-shadow:0 0 34px rgba(86,227,159,.92), inset 0 0 26px rgba(86,227,159,.25);
+    border-color:rgba(86,227,159,.95);
+  }
+  .pad.flash-good{
+    box-shadow:0 0 34px rgba(108,200,255,.92), inset 0 0 26px rgba(108,200,255,.25);
+    border-color:rgba(108,200,255,.95);
+  }
+  .pad.flash-ok,.pad.flash-miss{
+    box-shadow:0 0 34px rgba(255,90,95,.92), inset 0 0 26px rgba(255,90,95,.25);
+    border-color:rgba(255,90,95,.95);
+  }
   .judge{
     position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);
     font-size:34px;font-weight:1000;text-shadow:0 8px 25px rgba(0,0,0,.5);
@@ -188,14 +226,17 @@
     .entered .title{font-size:22px}
     .menu{top:92px}
     .maker.show{top:78px}
-    .pad{height:76px;font-size:34px}
-    .laneWrap{top:76px;bottom:116px}
+    .hud{height:104px;padding-right:74px}
+    .score{font-size:32px}
+    .pad{height:76px;font-size:31px}
+    .pad .key{font-size:12px}
+    .laneWrap{top:108px;bottom:116px}
     .hitLine{bottom:101px}
   }
 </style>
 </head>
 <body>
-<div class="version">ver2.0</div>
+<div class="version">ver2.1</div>
 
 <section id="home" class="screen active">
   <div class="title">셀-프 리듬게임</div>
@@ -228,7 +269,7 @@
     <button id="createGame">제작 시작</button>
     <div class="progressOuter"><div class="progressInner" id="progressBar"></div></div>
     <div class="analyzeStatus" id="analyzeStatus">
-      진행사항 2: 보컬 구간, 킥, 의미 있는 소리를 분석해 노트를 만듭니다.
+      진행사항 2.1: 보컬/킥/이벤트 분석 + 빈 구간 보충으로 노트를 더 촘촘히 만듭니다.
     </div>
     <div class="legend">
       <div>❤️ 보컬/롱노트</div>
@@ -269,6 +310,10 @@
       <div id="scoreText">0</div>
       <div class="hudSub" id="comboText">COMBO 0</div>
     </div>
+    <div class="progressHud">
+      <div class="songProgressOuter"><div class="songProgressInner" id="songProgressBar"></div></div>
+      <div class="songProgressText" id="songProgressText">0%</div>
+    </div>
   </div>
   <div class="laneWrap" id="laneWrap">
     <div class="lane" data-lane="0"></div>
@@ -279,10 +324,10 @@
   <div class="hitLine"></div>
   <div class="judge" id="judge">PERFECT</div>
   <div class="controls">
-    <button class="pad" data-lane="0">❤️</button>
-    <button class="pad" data-lane="1">♠️</button>
-    <button class="pad" data-lane="2">♦️</button>
-    <button class="pad" data-lane="3">♣️</button>
+    <button class="pad" data-lane="0"><span>❤️</span><span class="key">D</span></button>
+    <button class="pad" data-lane="1"><span>♠️</span><span class="key">F</span></button>
+    <button class="pad" data-lane="2"><span>♦️</span><span class="key">J</span></button>
+    <button class="pad" data-lane="3"><span>♣️</span><span class="key">K</span></button>
   </div>
 </section>
 
@@ -489,10 +534,10 @@
     const frames = [];
 
     const diffCfg = {
-      easy:   {minGap:.42, vocalMin:.18, eventMinGap:.52, keep:0.52, longMin:.9},
-      normal: {minGap:.29, vocalMin:.14, eventMinGap:.38, keep:0.72, longMin:.72},
-      hard:   {minGap:.18, vocalMin:.10, eventMinGap:.25, keep:0.92, longMin:.55}
-    }[difficulty] || {minGap:.29, vocalMin:.14, eventMinGap:.38, keep:.72, longMin:.72};
+      easy:   {minGap:.34, vocalMin:.14, eventMinGap:.42, keep:0.72, longMin:.82, fillGap:.72},
+      normal: {minGap:.23, vocalMin:.10, eventMinGap:.30, keep:0.92, longMin:.62, fillGap:.52},
+      hard:   {minGap:.15, vocalMin:.08, eventMinGap:.20, keep:1.00, longMin:.48, fillGap:.38}
+    }[difficulty] || {minGap:.23, vocalMin:.10, eventMinGap:.30, keep:.92, longMin:.62, fillGap:.52};
 
     progress('전체 음원을 짧은 조각으로 나누는 중...', 30);
 
@@ -538,9 +583,9 @@
     smoothField(frames,'kickScore',3);
     smoothField(frames,'eventScore',3);
 
-    const vocalThreshold = percentile(frames.map(f=>f.vocalScoreSm), 73);
-    const kickThreshold = percentile(frames.map(f=>f.kickScoreSm), 84);
-    const eventThreshold = percentile(frames.map(f=>f.eventScoreSm), 88);
+    const vocalThreshold = percentile(frames.map(f=>f.vocalScoreSm), difficulty === 'easy' ? 68 : difficulty === 'hard' ? 61 : 64);
+    const kickThreshold = percentile(frames.map(f=>f.kickScoreSm), difficulty === 'easy' ? 79 : difficulty === 'hard' ? 72 : 75);
+    const eventThreshold = percentile(frames.map(f=>f.eventScoreSm), difficulty === 'easy' ? 82 : difficulty === 'hard' ? 75 : 78);
 
     const vocalSegments = detectVocalSegments(frames, vocalThreshold, diffCfg);
     progress(`보컬 구간 ${vocalSegments.length}개 발견. 롱노트 변환 중...`, 58);
@@ -587,9 +632,10 @@
 
     progress('세 종류의 노트를 합치는 중...', 82);
     let notes = mergeNotes([...vocalNotes, ...kickNotes, ...eventNotes], diffCfg.minGap);
+    notes = fillSparseSections(notes, buffer.duration, diffCfg, difficulty);
 
     notes = notes
-      .filter((n,i)=> i % Math.round(1 / diffCfg.keep) === 0 || n.type === 'vocal' || difficulty === 'hard')
+      .filter((n,i)=> i % Math.max(1, Math.round(1 / diffCfg.keep)) === 0 || n.type === 'vocal' || difficulty === 'hard')
       .sort((a,b)=>a.time-b.time)
       .map((n,i)=> {
         // 같은 라인이 너무 반복되면 보정
@@ -720,6 +766,46 @@
     return out.sort((a,b)=>a.time-b.time);
   }
 
+  function fillSparseSections(notes, duration, cfg, difficulty){
+    const out = [...notes].sort((a,b)=>a.time-b.time);
+    const startAt = 0.8;
+    const endAt = Math.max(startAt, duration - 0.8);
+    let cursor = startAt;
+    let idx = 0;
+    const laneSeq = difficulty === 'easy' ? [0,2,1,3] : [0,1,2,3,2,1];
+
+    while(cursor < endAt){
+      const nearby = out.some(n => Math.abs(n.time - cursor) < cfg.fillGap * 0.72);
+      const tooClose = out.some(n => Math.abs(n.time - cursor) < cfg.minGap);
+      if(!nearby && !tooClose){
+        const lane = laneSeq[idx % laneSeq.length];
+        out.push({
+          time: cursor,
+          lane,
+          type:'fill',
+          long:false,
+          duration:0,
+          symbol:symbols[lane],
+          hit:false,
+          missed:false
+        });
+        idx++;
+      }
+      cursor += cfg.fillGap;
+    }
+
+    out.sort((a,b)=>a.time-b.time);
+    if(!out.length || out[0].time > 2.0){
+      for(let t=.9, i=0;t<Math.min(5.5, duration-1);t+=cfg.fillGap,i++){
+        if(!out.some(n=>Math.abs(n.time-t)<cfg.minGap)){
+          const lane = laneSeq[i % laneSeq.length];
+          out.push({time:t,lane,type:'fill',long:false,duration:0,symbol:symbols[lane],hit:false,missed:false});
+        }
+      }
+    }
+    return out.sort((a,b)=>a.time-b.time);
+  }
+
   function fallbackNotes(duration, difficulty){
     const gap = difficulty === 'hard' ? .32 : difficulty === 'easy' ? .62 : .45;
     const arr = [];
@@ -788,6 +874,8 @@
     activeNotes = currentGame.notes.map((n,idx)=>({...n, idx, el:null, hit:false, missed:false}));
     score = 0; combo = 0;
     updateScore();
+    $('#songProgressBar').style.width = '0%';
+    $('#songProgressText').textContent = '0%';
 
     $('#playTitle').textContent = currentGame.title;
     $('#playInfo').textContent = `보컬/킥/이벤트 · ${currentGame.noteCount} notes`;
@@ -832,6 +920,12 @@
   function loop(){
     const now = performance.now()/1000;
     const songTime = currentAudio ? currentAudio.currentTime : (now-startTime);
+    const duration = currentAudio && currentAudio.duration ? currentAudio.duration : (currentGame?.duration || 1);
+    const pct = clamp((songTime / duration) * 100, 0, 100);
+    const bar = $('#songProgressBar');
+    const txt = $('#songProgressText');
+    if(bar) bar.style.width = pct.toFixed(1) + '%';
+    if(txt) txt.textContent = Math.floor(pct) + '%';
     const travel = 2.05;
     const laneHeight = $('.lane').clientHeight;
     const hitY = laneHeight - 32;
@@ -874,17 +968,25 @@
       .map(n=>({...n, diff:Math.abs(n.time-songTime)}))
       .sort((a,b)=>a.diff-b.diff);
 
-    if(!candidates.length) return;
+    if(!candidates.length){
+      flashPad(lane, 'keyflash');
+      return false;
+    }
 
     const n = activeNotes.find(x=>x.idx===candidates[0].idx);
     const diff = Math.abs(n.time-songTime);
     if(diff <= .075){
       applyHit(n, 1000, 'PERFECT');
+      return true;
     }else if(diff <= .14){
       applyHit(n, 650, 'GOOD');
+      return true;
     }else if(diff <= .22){
       applyHit(n, 300, 'OK');
+      return true;
     }
+    flashPad(lane, 'keyflash');
+    return false;
   }
 
   function applyHit(n, points, text){
@@ -893,9 +995,17 @@
     score += points + combo * 7;
     updateScore();
     showJudge(text);
-    const pad = $(`.pad[data-lane="${n.lane}"]`);
-    pad.classList.add('active');
-    setTimeout(()=>pad.classList.remove('active'),110);
+    const cls = text === 'PERFECT' ? 'flash-perfect' : text === 'GOOD' ? 'flash-good' : 'flash-ok';
+    flashPad(n.lane, cls);
+  }
+
+  function flashPad(lane, cls='keyflash'){
+    const pad = $(`.pad[data-lane="${lane}"]`);
+    if(!pad) return;
+    pad.classList.remove('active','keyflash','flash-perfect','flash-good','flash-ok','flash-miss');
+    void pad.offsetWidth;
+    pad.classList.add('active', cls);
+    setTimeout(()=>pad.classList.remove('active', cls), 150);
   }
 
   function updateScore(){
@@ -920,8 +1030,12 @@
   });
 
   window.addEventListener('keydown', e=>{
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     const map = {'d':0,'f':1,'j':2,'k':3,'ArrowLeft':0,'ArrowDown':1,'ArrowUp':2,'ArrowRight':3};
-    if(map[e.key] != null) hitLane(map[e.key]);
+    if(map[key] != null){
+      e.preventDefault();
+      hitLane(map[key]);
+    }
   });
 
   // 예시 게임 생성: 외부 파일 없이 간단한 내장 음원 생성
