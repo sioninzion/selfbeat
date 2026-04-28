@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>셀-프 리듬게임 ver2.8.2</title>
+<title>셀-프 리듬게임 ver2.9</title>
 <style>
   :root{
     --bg:#07070c;
@@ -247,6 +247,21 @@
     display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;font-size:12px;color:var(--muted)
   }
   .legend div{background:rgba(255,255,255,.06);padding:9px;border-radius:12px}
+  .resultPanel{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:min(92vw,520px);padding:24px;border-radius:28px;
+    background:rgba(16,16,27,.94);border:1px solid rgba(255,255,255,.13);
+    box-shadow:0 24px 80px rgba(0,0,0,.55);backdrop-filter:blur(18px);
+    z-index:70;display:none;text-align:center;
+  }
+  .resultPanel.show{display:block}
+  .resultPanel h2{margin:0 0 8px;font-size:30px}
+  .resultScore{font-size:48px;font-weight:1000;margin:6px 0 14px}
+  .resultGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:16px 0}
+  .resultCell{background:rgba(255,255,255,.075);border-radius:17px;padding:12px}
+  .resultCell b{display:block;font-size:22px;margin-top:4px}
+  .bestText{color:var(--muted);font-size:14px;margin:8px 0 18px}
+  .backMenuBtn{width:100%;background:linear-gradient(135deg,#ff5f9e,#7c5cff);font-weight:1000}
   @media(max-width:520px){
     .entered .title{font-size:22px}
     .menu{top:92px}
@@ -261,7 +276,7 @@
 </style>
 </head>
 <body>
-<div class="version">ver2.8.2</div>
+<div class="version">ver2.9</div>
 
 <section id="home" class="screen active">
   <div class="title">셀-프 리듬게임</div>
@@ -284,19 +299,20 @@
       <input id="mp3Input" type="file" accept="audio/*" />
     </div>
     <div class="field">
-      <label>난이도 <span style="color:var(--muted);font-size:12px">(3 = 현재 기준, 5 = 최고난도)</span></label>
+      <label>난이도 <span style="color:var(--muted);font-size:12px">(3 = 현재 기준, 5 = 최고난도, 6 = 무작위)</span></label>
       <select id="difficultySelect">
         <option value="1">1 - 쉬움</option>
         <option value="2">2 - 보통</option>
         <option value="3" selected>3 - 현재 기준</option>
         <option value="4">4 - 어려움</option>
         <option value="5">5 - 최고난도</option>
+        <option value="6">6 - 무작위 배열</option>
       </select>
     </div>
 <button id="createGame">제작 시작</button>
     <div class="progressOuter"><div class="progressInner" id="progressBar"></div></div>
     <div class="analyzeStatus" id="analyzeStatus">
-      진행사항 2.8.2: 난이도 선택 UI를 안정적인 선택 메뉴 방식으로 수정했습니다.
+      진행사항 2.9: 난이도 6 무작위 배열과 결과 화면/최고점수 기록을 추가했습니다.
     </div>
     <div class="legend">
       <div>❤️ 멜로디</div>
@@ -343,6 +359,18 @@
   <div class="hitLine"></div>
   <div class="judge" id="judge">PERFECT</div>
   <div class="countdown" id="countdown">3</div>
+  <div class="resultPanel" id="resultPanel">
+    <h2>결과</h2>
+    <div class="resultScore" id="resultScore">0</div>
+    <div class="bestText" id="bestText">이전 최고점수: 0</div>
+    <div class="resultGrid">
+      <div class="resultCell">PERFECT<b id="perfectCount">0</b></div>
+      <div class="resultCell">GOOD<b id="goodCount">0</b></div>
+      <div class="resultCell">OK<b id="okCount">0</b></div>
+      <div class="resultCell">MISS<b id="missCount">0</b></div>
+    </div>
+    <button class="backMenuBtn" id="backMenuBtn">돌아가기</button>
+  </div>
   <div class="controls">
     <button class="pad" data-lane="0"><span>❤️</span><span class="key">D</span></button>
     <button class="pad" data-lane="1"><span>♠️</span><span class="key">F</span></button>
@@ -381,6 +409,8 @@
   let startTime = 0;
   let score = 0;
   let combo = 0;
+  let judgeCounts = {perfect:0, good:0, ok:0, miss:0};
+  let resultShown = false;
   let volume = 0.85;
   let selectedDifficulty = 3;
 
@@ -719,7 +749,11 @@ function saveSettings(){
 
     notes = refinePlayablePattern(notes, cfg);
 
-    notes = rebalanceRepeatedLanes(notes, cfg);
+    if(diff.randomLane){
+      notes = randomizeLanes(notes);
+    }else{
+      notes = rebalanceRepeatedLanes(notes, cfg);
+    }
 
     notes = notes
       .sort((a,b)=>a.time-b.time)
@@ -776,6 +810,14 @@ function saveSettings(){
         kickGap:.09, snareGap:.10, melodyGap:.065, hatGap:.055,
         kickPct:52, snarePct:48, melodyPct:24, hatPct:40,
         kickQ:.10, snareQ:.14, melodyQ:.62, hatQ:.14
+      },
+      6: {
+        densityMin:6.10, densityMax:7.40,
+        minGap:.052, sameLaneGap:.050,
+        kickGap:.09, snareGap:.10, melodyGap:.065, hatGap:.055,
+        kickPct:52, snarePct:48, melodyPct:24, hatPct:40,
+        kickQ:.10, snareQ:.14, melodyQ:.62, hatQ:.14,
+        randomLane:true
       }
     };
     return table[level] || table[3];
@@ -867,6 +909,15 @@ function saveSettings(){
     // 멜로디는 하트가 중심이지만, 같은 키 반복을 줄이기 위해 4라인에 섞어 배치
     const pattern = [0,1,0,2,0,3,1,0,2,0,3,0];
     return pattern[i % pattern.length];
+  }
+
+  function randomizeLanes(notes){
+    const out = [...notes].sort((a,b)=>a.time-b.time);
+    for(const n of out){
+      n.lane = Math.floor(Math.random() * 4);
+      n.symbol = symbols[n.lane];
+    }
+    return out;
   }
 
   function rebalanceRepeatedLanes(notes, cfg){
@@ -998,7 +1049,7 @@ function saveSettings(){
       item.innerHTML = `
         <div>
           <div class="name">${escapeHtml(g.title)}</div>
-          <div class="meta">${g.noteCount||0} notes · ${Math.round(g.duration||0)}초 · 난이도 ${g.difficulty || 3}</div>
+          <div class="meta">${g.noteCount||0} notes · ${Math.round(g.duration||0)}초 · 난이도 ${g.difficulty || 3}${g.difficulty == 6 ? ' 무작위' : ''}</div>
         </div>
         <div class="actions">
           <button data-play="${g.id}">플레이</button>
@@ -1037,12 +1088,15 @@ function escapeHtml(str){
     currentGame = JSON.parse(JSON.stringify(game));
     activeNotes = currentGame.notes.map((n,idx)=>({...n, idx, el:null, hit:false, missed:false}));
     score = 0; combo = 0;
+    judgeCounts = {perfect:0, good:0, ok:0, miss:0};
+    resultShown = false;
+    $('#resultPanel').classList.remove('show');
     updateScore();
     $('#songProgressBar').style.width = '0%';
     $('#songProgressText').textContent = '0%';
 
     $('#playTitle').textContent = currentGame.title;
-    $('#playInfo').textContent = `난이도 ${currentGame.difficulty || 3} · 킥/스네어/멜로디/하이햇 · ${currentGame.noteCount} notes`;
+    $('#playInfo').textContent = `난이도 ${currentGame.difficulty || 3}${currentGame.difficulty == 6 ? ' 무작위' : ''} · 킥/스네어/멜로디/하이햇 · ${currentGame.noteCount} notes`;
 
     home.classList.remove('active');
     gameScreen.classList.add('active');
@@ -1062,8 +1116,7 @@ function escapeHtml(str){
     }, {once:true});
 
     currentAudio.addEventListener('ended', () => {
-      showJudge('완료!');
-      setTimeout(()=>exitBtn.click(), 1200);
+      showResults();
     }, {once:true});
   }
 
@@ -1106,6 +1159,7 @@ function escapeHtml(str){
 
       if(songTime - n.time > .22){
         n.missed = true;
+        judgeCounts.miss++;
         combo = 0;
         updateScore();
         showJudge('MISS');
@@ -1113,6 +1167,41 @@ function escapeHtml(str){
     }
     rafId = requestAnimationFrame(loop);
   }
+
+  function getBestKey(gameId){
+    return 'selfRhythmBestScore_' + gameId;
+  }
+
+  function showResults(){
+    if(resultShown) return;
+    resultShown = true;
+    if(rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+
+    const bestKey = getBestKey(currentGame?.id || 'unknown');
+    const previousBest = Number(localStorage.getItem(bestKey) || 0);
+    const isNewBest = score > previousBest;
+    if(isNewBest) localStorage.setItem(bestKey, String(score));
+
+    $('#resultScore').textContent = String(score);
+    $('#bestText').textContent = `이전 최고점수: ${previousBest}${isNewBest ? ' · NEW BEST!' : ''}`;
+    $('#perfectCount').textContent = String(judgeCounts.perfect);
+    $('#goodCount').textContent = String(judgeCounts.good);
+    $('#okCount').textContent = String(judgeCounts.ok);
+    $('#missCount').textContent = String(judgeCounts.miss);
+    $('#resultPanel').classList.add('show');
+  }
+
+  $('#backMenuBtn').addEventListener('click', () => {
+    $('#resultPanel').classList.remove('show');
+    stopGame();
+    gameScreen.classList.remove('active');
+    home.classList.add('active');
+    home.classList.add('entered');
+    closePanels();
+    menu.classList.remove('hide');
+    exitBtn.classList.remove('show');
+  });
 
   function runCountdown(){
     const el = $('#countdown');
@@ -1151,6 +1240,7 @@ function escapeHtml(str){
       currentAudio = null;
     }
     activeNotes = [];
+    $('#resultPanel')?.classList.remove('show');
     $$('.lane').forEach(l=>l.innerHTML='');
   }
 
@@ -1187,6 +1277,9 @@ function escapeHtml(str){
     combo++;
     score += points + combo * 7;
     updateScore();
+    if(text === 'PERFECT') judgeCounts.perfect++;
+    else if(text === 'GOOD') judgeCounts.good++;
+    else judgeCounts.ok++;
     showJudge(text);
     const cls = text === 'PERFECT' ? 'flash-perfect' : text === 'GOOD' ? 'flash-good' : 'flash-ok';
     flashPad(n.lane, cls);
