@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>셀-프 리듬게임 ver2.9.1</title>
+<title>셀-프 리듬게임 ver2.10</title>
 <style>
   :root{
     --bg:#07070c;
@@ -141,7 +141,7 @@
   }
   .progressHud{
     grid-column:1 / 3;
-    display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;
+    display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;
   }
   .songProgressOuter{
     height:9px;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden;
@@ -152,6 +152,12 @@
     transition:.08s linear width;
   }
   .songProgressText{font-size:13px;color:rgba(255,255,255,.86);font-weight:900;min-width:42px;text-align:right}
+  .miniExitBtn{
+    width:28px;height:28px;border-radius:999px;padding:0;
+    display:none;align-items:center;justify-content:center;
+    background:rgba(230,57,70,.95);font-size:16px;font-weight:1000;
+    box-shadow:0 6px 18px rgba(230,57,70,.34);
+  }
   .laneWrap{
     position:absolute;left:50%;top:108px;bottom:128px;transform:translateX(-50%);
     width:min(96vw,620px);display:grid;grid-template-columns:repeat(4,1fr);gap:8px;
@@ -162,29 +168,47 @@
   }
   .hitLine{
     position:absolute;left:50%;bottom:112px;transform:translateX(-50%);
-    width:min(96vw,620px);height:4px;background:rgba(255,255,255,.75);
-    border-radius:99px;box-shadow:0 0 20px rgba(255,255,255,.45);z-index:15;
+    width:min(96vw,620px);height:6px;background:rgba(255,255,255,.88);
+    border-radius:99px;box-shadow:0 0 24px rgba(255,255,255,.62);z-index:15;
   }
   .note{
     position:absolute;left:50%;transform:translateX(-50%);
-    width:58px;height:58px;border-radius:999px;
+    width:82%;height:26px;border-radius:999px;
     display:flex;align-items:center;justify-content:center;
-    font-size:32px;font-weight:900;
+    font-size:0;font-weight:900;
     background:rgba(255,255,255,.16);
-    border:2px solid rgba(255,255,255,.35);
+    border:3px solid rgba(255,255,255,.35);
     box-shadow:0 8px 20px rgba(0,0,0,.35);
     z-index:10;
+    overflow:hidden;
   }
-  .note.long{
-    border-radius:999px 999px 28px 28px;
-    align-items:flex-start;padding-top:8px;
+  .note::after{
+    content:"";
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:76%;height:5px;border-radius:999px;
+    background:rgba(255,255,255,.96);
+    box-shadow:0 0 14px rgba(255,255,255,.9);
   }
-  .note.vocal{box-shadow:0 0 25px rgba(255,95,158,.35)}
-  .note.kick{box-shadow:0 0 25px rgba(255,209,102,.34)}
-  .note.event{box-shadow:0 0 25px rgba(108,200,255,.34)}
-  .note.melody{box-shadow:0 0 25px rgba(255,95,158,.34)}
-  .note.snare{box-shadow:0 0 25px rgba(160,130,255,.34)}
-  .note.hat{box-shadow:0 0 25px rgba(108,200,255,.34)}
+  .note.kick{
+    background:rgba(255,76,76,.25);
+    border-color:rgba(255,76,76,.95);
+    box-shadow:0 0 22px rgba(255,76,76,.38),0 8px 20px rgba(0,0,0,.35);
+  }
+  .note.snare{
+    background:rgba(255,157,45,.25);
+    border-color:rgba(255,157,45,.95);
+    box-shadow:0 0 22px rgba(255,157,45,.38),0 8px 20px rgba(0,0,0,.35);
+  }
+  .note.melody,.note.vocal{
+    background:rgba(78,224,122,.24);
+    border-color:rgba(78,224,122,.95);
+    box-shadow:0 0 22px rgba(78,224,122,.38),0 8px 20px rgba(0,0,0,.35);
+  }
+  .note.hat,.note.event{
+    background:rgba(80,169,255,.24);
+    border-color:rgba(80,169,255,.95);
+    box-shadow:0 0 22px rgba(80,169,255,.38),0 8px 20px rgba(0,0,0,.35);
+  }
   .controls{
     position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
     width:min(96vw,620px);display:grid;grid-template-columns:repeat(4,1fr);gap:8px;z-index:30;
@@ -272,11 +296,13 @@
     .pad .key{font-size:12px}
     .laneWrap{top:108px;bottom:116px}
     .hitLine{bottom:101px}
+    #game.active .miniExitBtn{display:flex}
+    #game.active ~ .exitBtn.show{display:none}
   }
 </style>
 </head>
 <body>
-<div class="version">ver2.9.1</div>
+<div class="version">ver2.10</div>
 
 <section id="home" class="screen active">
   <div class="title">셀-프 리듬게임</div>
@@ -312,7 +338,7 @@
 <button id="createGame">제작 시작</button>
     <div class="progressOuter"><div class="progressInner" id="progressBar"></div></div>
     <div class="analyzeStatus" id="analyzeStatus">
-      진행사항 2.9.1: iOS에서 MP3 파일 선택이 가능하도록 파일 입력 방식을 수정했습니다.
+      진행사항 2.10: 원형 노트를 색 막대형 노트로 바꾸고, 모바일 나가기 버튼을 진행률 옆으로 이동했습니다.
     </div>
     <div class="legend">
       <div>❤️ 멜로디</div>
@@ -348,6 +374,7 @@
     <div class="progressHud">
       <div class="songProgressOuter"><div class="songProgressInner" id="songProgressBar"></div></div>
       <div class="songProgressText" id="songProgressText">0%</div>
+      <button class="miniExitBtn" id="miniExitBtn" type="button">×</button>
     </div>
   </div>
   <div class="laneWrap" id="laneWrap">
@@ -443,7 +470,11 @@ $('#startHome').addEventListener('click', () => {
     exitBtn.classList.add('show');
   });
 
-  exitBtn.addEventListener('click', () => {
+  exitBtn.addEventListener('click', goBackToMenu);
+
+  $('#miniExitBtn').addEventListener('click', goBackToMenu);
+
+  function goBackToMenu(){
     if (gameScreen.classList.contains('active')) stopGame();
     gameScreen.classList.remove('active');
     home.classList.add('active');
@@ -451,7 +482,7 @@ $('#startHome').addEventListener('click', () => {
     closePanels();
     menu.classList.remove('hide');
     exitBtn.classList.remove('show');
-  });
+  }
 
   $('#volumeRange').addEventListener('input', e => {
     volume = Number(e.target.value);
@@ -1194,13 +1225,7 @@ function escapeHtml(str){
 
   $('#backMenuBtn').addEventListener('click', () => {
     $('#resultPanel').classList.remove('show');
-    stopGame();
-    gameScreen.classList.remove('active');
-    home.classList.add('active');
-    home.classList.add('entered');
-    closePanels();
-    menu.classList.remove('hide');
-    exitBtn.classList.remove('show');
+    goBackToMenu();
   });
 
   function runCountdown(){
