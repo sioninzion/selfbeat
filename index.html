@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>셀-프 리듬게임 ver2.1</title>
+<title>셀-프 리듬게임 ver2.2</title>
 <style>
   :root{
     --bg:#07070c;
@@ -236,7 +236,7 @@
 </style>
 </head>
 <body>
-<div class="version">ver2.1</div>
+<div class="version">ver2.2</div>
 
 <section id="home" class="screen active">
   <div class="title">셀-프 리듬게임</div>
@@ -269,7 +269,7 @@
     <button id="createGame">제작 시작</button>
     <div class="progressOuter"><div class="progressInner" id="progressBar"></div></div>
     <div class="analyzeStatus" id="analyzeStatus">
-      진행사항 2.1: 보컬/킥/이벤트 분석 + 빈 구간 보충으로 노트를 더 촘촘히 만듭니다.
+      진행사항 2.2: 먼저 남성/여성/무보컬을 판별하고, 보컬 음절처럼 튀는 지점 중심으로 노트를 만듭니다.
     </div>
     <div class="legend">
       <div>❤️ 보컬/롱노트</div>
@@ -304,7 +304,7 @@
   <div class="hud">
     <div>
       <div class="hudTitle" id="playTitle">게임</div>
-      <div class="hudSub" id="playInfo">보컬 + 킥 + 이벤트 채보</div>
+      <div class="hudSub" id="playInfo">보컬 성향 분석 + 음절형 채보</div>
     </div>
     <div class="score">
       <div id="scoreText">0</div>
@@ -529,97 +529,159 @@
   function analyzeMusic(buffer, difficulty, progress){
     const sampleRate = buffer.sampleRate;
     const raw = mixToMono(buffer);
+
+    // ver2.2: 보충 노트/BPM 채우기를 제거하고, 실제 음향 특징 기반으로만 노트 생성
     const frameSize = Math.round(sampleRate * 0.046);
     const hop = Math.round(sampleRate * 0.023);
     const frames = [];
 
     const diffCfg = {
-      easy:   {minGap:.34, vocalMin:.14, eventMinGap:.42, keep:0.72, longMin:.82, fillGap:.72},
-      normal: {minGap:.23, vocalMin:.10, eventMinGap:.30, keep:0.92, longMin:.62, fillGap:.52},
-      hard:   {minGap:.15, vocalMin:.08, eventMinGap:.20, keep:1.00, longMin:.48, fillGap:.38}
-    }[difficulty] || {minGap:.23, vocalMin:.10, eventMinGap:.30, keep:.92, longMin:.62, fillGap:.52};
+      easy:   {minGap:.34, syllableGap:.30, longMin:.82, eventGap:.50, density:0.72},
+      normal: {minGap:.24, syllableGap:.22, longMin:.64, eventGap:.36, density:0.92},
+      hard:   {minGap:.16, syllableGap:.16, longMin:.48, eventGap:.24, density:1.00}
+    }[difficulty] || {minGap:.24, syllableGap:.22, longMin:.64, eventGap:.36, density:.92};
 
-    progress('전체 음원을 짧은 조각으로 나누는 중...', 30);
+    progress('음원을 읽고 보컬/악기 특징을 분리하는 중...', 24);
 
-    for(let start=0, idx=0; start + frameSize < raw.length; start += hop, idx++){
+    for(let start=0; start + frameSize < raw.length; start += hop){
       const t = start / sampleRate;
-      let total = 0, low = 0, mid = 0, high = 0, zc = 0;
+      let total = 0;
+      let zc = 0;
       let prev = raw[start];
+
+      // 가벼운 필터뱅크: 브라우저 단독이라 FFT 대신 시간영역 필터 느낌으로 대역 성향 추정
+      let veryLow = 0;   // 킥/베이스 성향
+      let lowMid = 0;    // 남성 보컬 기초 성향
+      let mid = 0;       // 보컬 존재감
+      let highMid = 0;   // 여성 보컬/발음 자음 성향
+      let high = 0;      // 심벌/찰칵거림
+
+      let lp1 = 0, lp2 = 0, lp3 = 0;
+      let last = raw[start];
 
       for(let i=0;i<frameSize;i++){
         const v = raw[start+i];
         total += v*v;
+
         if ((prev <= 0 && v > 0) || (prev >= 0 && v < 0)) zc++;
         prev = v;
-      }
 
-      // 가벼운 주파수 성격 추정: 정확한 FFT 대신 필터 느낌의 차분 에너지 사용
-      // low: 천천히 변하는 파형, mid/high: 변화량 기반
-      let slow = 0, fast = 0, last = raw[start];
-      for(let i=2;i<frameSize;i+=2){
-        const v = raw[start+i];
-        const d = v - last;
-        fast += d*d;
-        slow += ((v + last) * .5) ** 2;
+        // 아주 단순한 저역/중역/고역 대리 지표
+        lp1 = lp1 * .985 + v * .015;
+        lp2 = lp2 * .94 + v * .06;
+        lp3 = lp3 * .78 + v * .22;
+
+        const bandVeryLow = lp1;
+        const bandLowMid = lp2 - lp1;
+        const bandMid = lp3 - lp2;
+        const bandHigh = v - lp3;
+        const diff = v - last;
         last = v;
+
+        veryLow += bandVeryLow * bandVeryLow;
+        lowMid += bandLowMid * bandLowMid;
+        mid += bandMid * bandMid;
+        high += bandHigh * bandHigh;
+        highMid += diff * diff;
       }
 
-      low = slow / (frameSize/2);
-      high = fast / (frameSize/2);
-      total = total / frameSize;
+      const inv = 1 / frameSize;
+      total *= inv;
+      veryLow *= inv;
+      lowMid *= inv;
+      mid *= inv;
+      highMid *= inv;
+      high *= inv;
 
-      // 보컬스러움: 전체 에너지가 있고, 킥처럼 너무 저음 위주도 아니며, 너무 심벌처럼 고주파만 크지도 않은 구간
       const zcr = zc / frameSize;
-      const vocalScore = total * clamp(1 - Math.abs(zcr - 0.065) * 8, 0, 1.3) * clamp((high / (low + 1e-7)) * .9, .25, 1.25);
-      const kickScore = low * clamp((low / (high + 1e-7)) * .4, .2, 2.2);
-      const eventScore = Math.max(0, total * .55 + high * 1.1);
 
-      frames.push({t,total,low,high,zcr,vocalScore,kickScore,eventScore});
+      // 남성/여성 보컬 후보 점수
+      // 남성: lowMid + mid가 중심이고, 킥처럼 veryLow만 과한 구간은 낮춤
+      // 여성: mid + highMid가 중심이고, 심벌처럼 high만 과한 구간은 낮춤
+      const bassPenalty = clamp(1 - (veryLow / (mid + lowMid + 1e-8)) * .28, .15, 1.1);
+      const cymbalPenalty = clamp(1 - (high / (mid + highMid + 1e-8)) * .22, .15, 1.1);
+      const zcrVoice = clamp(1 - Math.abs(zcr - .07) * 6.5, .12, 1.25);
+
+      const maleVoice = (lowMid * 1.25 + mid * 1.05) * bassPenalty * zcrVoice;
+      const femaleVoice = (mid * 1.05 + highMid * .72) * cymbalPenalty * zcrVoice;
+      const generalVoice = Math.max(maleVoice, femaleVoice);
+
+      // 킥은 아주 낮은 대역이 갑자기 튀는 경우
+      const kickScore = veryLow * clamp((veryLow / (mid + high + 1e-8)) * .6, .25, 2.5);
+
+      // 악기 이벤트는 보컬이 약한 구간에서 전체 에너지/스펙트럼 변화가 큰 경우
+      const eventScore = (mid * .6 + highMid * .75 + high * .35 + total * .25);
+
+      frames.push({
+        t,total,zcr,
+        veryLow,lowMid,mid,highMid,high,
+        maleVoice,femaleVoice,generalVoice,
+        kickScore,eventScore
+      });
     }
 
-    progress('킥과 보컬 후보를 분리하는 중...', 46);
+    progress('곡 타입을 판별하는 중: 남자 보컬 / 여자 보컬 / 무보컬...', 40);
 
-    smoothField(frames,'vocalScore',5);
+    smoothField(frames,'maleVoice',5);
+    smoothField(frames,'femaleVoice',5);
+    smoothField(frames,'generalVoice',5);
     smoothField(frames,'kickScore',3);
     smoothField(frames,'eventScore',3);
+    addFlux(frames, 'generalVoiceSm', 'voiceFlux');
+    addFlux(frames, 'eventScoreSm', 'eventFlux');
+    addFlux(frames, 'kickScoreSm', 'kickFlux');
 
-    const vocalThreshold = percentile(frames.map(f=>f.vocalScoreSm), difficulty === 'easy' ? 68 : difficulty === 'hard' ? 61 : 64);
-    const kickThreshold = percentile(frames.map(f=>f.kickScoreSm), difficulty === 'easy' ? 79 : difficulty === 'hard' ? 72 : 75);
-    const eventThreshold = percentile(frames.map(f=>f.eventScoreSm), difficulty === 'easy' ? 82 : difficulty === 'hard' ? 75 : 78);
+    const profile = classifyVocalProfile(frames);
+    progress(`곡 타입 판별: ${profile.label}. 해당 대역 중심으로 노트 생성 중...`, 52);
 
-    const vocalSegments = detectVocalSegments(frames, vocalThreshold, diffCfg);
-    progress(`보컬 구간 ${vocalSegments.length}개 발견. 롱노트 변환 중...`, 58);
+    const voiceField = profile.type === 'female' ? 'femaleVoiceSm' : profile.type === 'male' ? 'maleVoiceSm' : 'generalVoiceSm';
+    const voiceThreshold = percentile(frames.map(f=>f[voiceField]), profile.type === 'none' ? 90 : (difficulty === 'hard' ? 58 : difficulty === 'easy' ? 68 : 63));
+    const fluxThreshold = percentile(frames.map(f=>f.voiceFlux), difficulty === 'hard' ? 55 : difficulty === 'easy' ? 68 : 62);
 
-    const vocalNotes = [];
-    for(const seg of vocalSegments){
-      const dur = seg.end - seg.start;
-      if(dur >= diffCfg.longMin){
-        vocalNotes.push({
-          time: seg.start,
-          lane: 0,
-          type:'vocal',
-          long:true,
-          duration: Math.min(dur, 3.2),
-          symbol:'❤️'
-        });
-      }else{
-        vocalNotes.push({
-          time: seg.start + dur * .35,
-          lane: 0,
-          type:'vocal',
-          long:false,
-          duration:0,
-          symbol:'❤️'
-        });
+    let vocalNotes = [];
+    if(profile.type !== 'none'){
+      const syllablePeaks = detectSyllablePeaks(frames, voiceField, voiceThreshold, fluxThreshold, diffCfg.syllableGap);
+      const vocalSegments = detectVocalSegmentsByField(frames, voiceField, voiceThreshold * .78, diffCfg);
+
+      // 음절처럼 튀는 지점은 탭 노트
+      vocalNotes = syllablePeaks.map(p => ({
+        time:p.t,
+        lane:0,
+        type:'vocal',
+        long:false,
+        duration:0,
+        symbol:'❤️',
+        power:p.value
+      }));
+
+      // 길게 끄는 보컬은 롱노트로 추가하되, 내부 음절 피크가 많으면 롱노트 대신 음절 노트를 우선
+      for(const seg of vocalSegments){
+        const dur = seg.end - seg.start;
+        const inner = vocalNotes.filter(n => n.time >= seg.start && n.time <= seg.end).length;
+        if(dur >= diffCfg.longMin && inner <= Math.max(1, Math.floor(dur / .55))){
+          vocalNotes.push({
+            time:seg.start,
+            lane:0,
+            type:'vocal',
+            long:true,
+            duration:Math.min(dur, 3.0),
+            symbol:'❤️',
+            power:seg.power
+          });
+        }
       }
     }
 
-    progress('킥 노트를 생성하는 중...', 68);
-    const kickNotes = detectPeaks(frames, 'kickScoreSm', kickThreshold, .20)
+    progress(`보컬 노트 ${vocalNotes.length}개 생성. 킥/악기 이벤트를 보조로 추가 중...`, 68);
+
+    const kickThreshold = percentile(frames.map(f=>f.kickFlux), difficulty === 'hard' ? 76 : difficulty === 'easy' ? 88 : 82);
+    const kickNotes = detectPeaks(frames, 'kickFlux', kickThreshold, difficulty === 'hard' ? .18 : .26)
+      .filter(p => profile.type === 'none' || !nearAny(vocalNotes, p.t, .12))
       .map(p => ({time:p.t, lane:2, type:'kick', long:false, duration:0, symbol:'♦️', power:p.value}));
 
-    progress('의미 있는 악기/효과음 노트를 생성하는 중...', 76);
-    const eventNotes = detectPeaks(frames, 'eventScoreSm', eventThreshold, diffCfg.eventMinGap)
+    const eventThreshold = percentile(frames.map(f=>f.eventFlux), profile.type === 'none' ? 73 : 84);
+    const eventNotes = detectPeaks(frames, 'eventFlux', eventThreshold, diffCfg.eventGap)
+      .filter(p => !nearAny(vocalNotes, p.t, .16) && !nearAny(kickNotes, p.t, .12))
       .map((p,i) => ({
         time:p.t,
         lane:i%2 ? 3 : 1,
@@ -630,18 +692,17 @@
         power:p.value
       }));
 
-    progress('세 종류의 노트를 합치는 중...', 82);
+    progress('실제 감지된 노트만 정리하는 중...', 82);
+
     let notes = mergeNotes([...vocalNotes, ...kickNotes, ...eventNotes], diffCfg.minGap);
-    notes = fillSparseSections(notes, buffer.duration, diffCfg, difficulty);
+    notes = reduceDensity(notes, difficulty, profile.type);
 
     notes = notes
-      .filter((n,i)=> i % Math.max(1, Math.round(1 / diffCfg.keep)) === 0 || n.type === 'vocal' || difficulty === 'hard')
       .sort((a,b)=>a.time-b.time)
-      .map((n,i)=> {
-        // 같은 라인이 너무 반복되면 보정
-        if(i>0 && notes[i-1] && notes[i-1].lane === n.lane && !n.long){
-          if(n.type === 'kick') n.lane = 2;
-          else n.lane = (n.lane + 1) % 4;
+      .map((n,i,arr)=> {
+        // 같은 라인 반복을 줄이되, 보컬은 하트 라인 유지
+        if(i>0 && arr[i-1] && arr[i-1].lane === n.lane && !n.long && n.type !== 'vocal'){
+          n.lane = (n.lane + 1) % 4;
           n.symbol = symbols[n.lane];
         }
         return {
@@ -656,11 +717,12 @@
         };
       });
 
-    if(notes.length < 12){
-      // 너무 조용한 음원용 안전망
-      notes = fallbackNotes(buffer.duration, difficulty);
+    if(notes.length < 8){
+      // 무작위/BPM 보충이 아니라, 실제 에너지 이벤트만 최후 보정으로 사용
+      notes = fallbackDetectedEvents(frames, buffer.duration, difficulty);
     }
 
+    progress(`${profile.label} 기준 분석 완료! 노트 ${notes.length}개 생성`, 100);
     return notes;
   }
 
@@ -691,6 +753,17 @@
     frames.forEach((f,i)=>f[field+'Sm']=out[i]);
   }
 
+  function addFlux(frames, sourceField, outField){
+    let prev = frames[0]?.[sourceField] || 0;
+    for(const f of frames){
+      const now = f[sourceField] || 0;
+      f[outField] = Math.max(0, now - prev);
+      prev = prev * .72 + now * .28;
+    }
+    smoothField(frames, outField, 2);
+    for(const f of frames) f[outField] = f[outField + 'Sm'];
+  }
+
   function percentile(arr, p){
     const a = arr.filter(Number.isFinite).sort((x,y)=>x-y);
     if(!a.length) return 0;
@@ -698,34 +771,90 @@
     return a[idx];
   }
 
-  function detectVocalSegments(frames, threshold, cfg){
+  function classifyVocalProfile(frames){
+    const maleArr = frames.map(f=>f.maleVoiceSm || 0);
+    const femaleArr = frames.map(f=>f.femaleVoiceSm || 0);
+    const genArr = frames.map(f=>f.generalVoiceSm || 0);
+
+    const maleStrong = percentile(maleArr, 82);
+    const femaleStrong = percentile(femaleArr, 82);
+    const genStrong = percentile(genArr, 82);
+    const genMid = percentile(genArr, 55);
+
+    const activeRatio = frames.filter(f => (f.generalVoiceSm || 0) > genMid && f.total > 0.000012).length / Math.max(1, frames.length);
+    const voiceContrast = genStrong / (percentile(genArr, 35) + 1e-9);
+
+    // 보컬 없음: 지속적인 보컬스러운 에너지가 적거나 대비가 너무 낮은 경우
+    if(activeRatio < .18 || voiceContrast < 1.35){
+      return {type:'none', label:'무보컬 또는 보컬 약함'};
+    }
+
+    if(femaleStrong > maleStrong * 1.12){
+      return {type:'female', label:'여자 보컬 성향'};
+    }
+    if(maleStrong > femaleStrong * 1.08){
+      return {type:'male', label:'남자 보컬 성향'};
+    }
+    return {type:'female', label:'혼합 보컬/여자 보컬 우세'};
+  }
+
+  function detectSyllablePeaks(frames, voiceField, threshold, fluxThreshold, minGap){
+    const peaks = [];
+    let lastT = -999;
+
+    for(let i=2;i<frames.length-2;i++){
+      const f = frames[i];
+      const prev = frames[i-1];
+      const next = frames[i+1];
+
+      const voice = f[voiceField] || 0;
+      const localPeak = voice >= (prev[voiceField] || 0) && voice >= (next[voiceField] || 0);
+      const onset = (f.voiceFlux || 0) > fluxThreshold;
+      const enoughEnergy = voice > threshold;
+
+      // 한 글자/음절 느낌: 보컬 에너지가 올라오는 시작점 또는 짧은 봉우리
+      if((enoughEnergy && onset) || (enoughEnergy * 1.18 && localPeak && (f.t-lastT)>minGap*1.25)){
+        if(f.t - lastT >= minGap){
+          peaks.push({t:f.t, value:voice + (f.voiceFlux||0)});
+          lastT = f.t;
+        }
+      }
+    }
+    return peaks;
+  }
+
+  function detectVocalSegmentsByField(frames, field, threshold, cfg){
     const segs = [];
-    let inSeg = false, start = 0, lastActive = 0;
-    const minSilence = .16;
+    let inSeg = false, start = 0, lastActive = 0, power = 0, count = 0;
+    const minSilence = .18;
 
     for(const f of frames){
-      const active = f.vocalScoreSm > threshold && f.total > 0.000015;
+      const active = (f[field] || 0) > threshold && f.total > 0.000012;
       if(active && !inSeg){
-        inSeg = true; start = f.t;
+        inSeg = true; start = f.t; power = 0; count = 0;
       }
-      if(active) lastActive = f.t;
+      if(active){
+        lastActive = f.t;
+        power += f[field] || 0;
+        count++;
+      }
       if(inSeg && !active && f.t - lastActive > minSilence){
         const end = lastActive;
-        if(end - start >= cfg.vocalMin) segs.push({start,end});
+        if(end - start >= cfg.syllableGap * 1.25) segs.push({start,end,power:power/Math.max(1,count)});
         inSeg = false;
       }
     }
     if(inSeg){
       const end = frames[frames.length-1].t;
-      if(end - start >= cfg.vocalMin) segs.push({start,end});
+      if(end - start >= cfg.syllableGap * 1.25) segs.push({start,end,power:power/Math.max(1,count)});
     }
 
-    // 너무 가까운 보컬 구간 병합
     const merged = [];
     for(const s of segs){
       const prev = merged[merged.length-1];
-      if(prev && s.start - prev.end < .22){
+      if(prev && s.start - prev.end < .16){
         prev.end = s.end;
+        prev.power = Math.max(prev.power, s.power);
       }else merged.push({...s});
     }
     return merged;
@@ -735,13 +864,17 @@
     const peaks = [];
     let lastT = -999;
     for(let i=1;i<frames.length-1;i++){
-      const a = frames[i-1][field], b = frames[i][field], c = frames[i+1][field];
-      if(b > threshold && b > a * 1.08 && b >= c && frames[i].t - lastT >= minGap){
+      const a = frames[i-1][field] || 0, b = frames[i][field] || 0, c = frames[i+1][field] || 0;
+      if(b > threshold && b > a * 1.05 && b >= c && frames[i].t - lastT >= minGap){
         peaks.push({t:frames[i].t, value:b});
         lastT = frames[i].t;
       }
     }
     return peaks;
+  }
+
+  function nearAny(notes, t, gap){
+    return notes.some(n => Math.abs(n.time - t) < gap);
   }
 
   function priority(type){
@@ -759,61 +892,41 @@
         out.push({...n});
       }else if(priority(n.type) > priority(near.type)){
         Object.assign(near, n);
-      }else if(n.type !== near.type && Math.abs(n.time - near.time) > minGap * .55){
-        out.push({...n, time:n.time + minGap*.35});
       }
     }
     return out.sort((a,b)=>a.time-b.time);
   }
 
-  function fillSparseSections(notes, duration, cfg, difficulty){
-    const out = [...notes].sort((a,b)=>a.time-b.time);
-    const startAt = 0.8;
-    const endAt = Math.max(startAt, duration - 0.8);
-    let cursor = startAt;
-    let idx = 0;
-    const laneSeq = difficulty === 'easy' ? [0,2,1,3] : [0,1,2,3,2,1];
-
-    while(cursor < endAt){
-      const nearby = out.some(n => Math.abs(n.time - cursor) < cfg.fillGap * 0.72);
-      const tooClose = out.some(n => Math.abs(n.time - cursor) < cfg.minGap);
-      if(!nearby && !tooClose){
-        const lane = laneSeq[idx % laneSeq.length];
-        out.push({
-          time: cursor,
-          lane,
-          type:'fill',
-          long:false,
-          duration:0,
-          symbol:symbols[lane],
-          hit:false,
-          missed:false
-        });
-        idx++;
-      }
-      cursor += cfg.fillGap;
-    }
-
-    out.sort((a,b)=>a.time-b.time);
-    if(!out.length || out[0].time > 2.0){
-      for(let t=.9, i=0;t<Math.min(5.5, duration-1);t+=cfg.fillGap,i++){
-        if(!out.some(n=>Math.abs(n.time-t)<cfg.minGap)){
-          const lane = laneSeq[i % laneSeq.length];
-          out.push({time:t,lane,type:'fill',long:false,duration:0,symbol:symbols[lane],hit:false,missed:false});
-        }
+  function reduceDensity(notes, difficulty, profileType){
+    if(difficulty === 'hard') return notes;
+    const sorted = [...notes].sort((a,b)=>a.time-b.time);
+    const out = [];
+    const minGap = difficulty === 'easy' ? .34 : .22;
+    for(const n of sorted){
+      const last = out[out.length-1];
+      if(!last || n.time - last.time >= minGap || n.type === 'vocal' || profileType === 'none'){
+        out.push(n);
       }
     }
-    return out.sort((a,b)=>a.time-b.time);
+    return out;
   }
 
-  function fallbackNotes(duration, difficulty){
-    const gap = difficulty === 'hard' ? .32 : difficulty === 'easy' ? .62 : .45;
-    const arr = [];
-    for(let t=1, i=0;t<duration-1;t+=gap,i++){
-      const lane = i%4;
-      arr.push({time:round(t,3), lane, type:'event', long:false, duration:0, symbol:symbols[lane], hit:false, missed:false});
-    }
-    return arr;
+  function fallbackDetectedEvents(frames, duration, difficulty){
+    const eventThreshold = percentile(frames.map(f=>f.eventFlux || 0), difficulty === 'hard' ? 70 : 78);
+    const peaks = detectPeaks(frames, 'eventFlux', eventThreshold, difficulty === 'hard' ? .28 : .42);
+    return peaks.slice(0, Math.max(8, Math.floor(duration / 2.5))).map((p,i)=>{
+      const lane = [1,2,3,0][i%4];
+      return {
+        time:round(p.t,3),
+        lane,
+        type:'event',
+        long:false,
+        duration:0,
+        symbol:symbols[lane],
+        hit:false,
+        missed:false
+      };
+    });
   }
 
   function renderList(){
