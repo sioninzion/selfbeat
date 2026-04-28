@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>셀-프 리듬게임 ver2.2</title>
+<title>셀-프 리듬게임 ver2.3</title>
 <style>
   :root{
     --bg:#07070c;
@@ -236,7 +236,7 @@
 </style>
 </head>
 <body>
-<div class="version">ver2.2</div>
+<div class="version">ver2.3</div>
 
 <section id="home" class="screen active">
   <div class="title">셀-프 리듬게임</div>
@@ -258,18 +258,10 @@
       <label>MP3 파일 업로드</label>
       <input id="mp3Input" type="file" accept="audio/*" />
     </div>
-    <div class="field">
-      <label>난이도</label>
-      <select id="difficulty">
-        <option value="easy">하</option>
-        <option value="normal" selected>중</option>
-        <option value="hard">상</option>
-      </select>
-    </div>
-    <button id="createGame">제작 시작</button>
+<button id="createGame">제작 시작</button>
     <div class="progressOuter"><div class="progressInner" id="progressBar"></div></div>
     <div class="analyzeStatus" id="analyzeStatus">
-      진행사항 2.2: 먼저 남성/여성/무보컬을 판별하고, 보컬 음절처럼 튀는 지점 중심으로 노트를 만듭니다.
+      진행사항 2.3: 난이도 선택 없이 표준 채보로 생성하고, 보컬 시작점 중심으로 4라인에 분산합니다.
     </div>
     <div class="legend">
       <div>❤️ 보컬/롱노트</div>
@@ -289,15 +281,7 @@
       <label>볼륨</label>
       <input id="volumeRange" type="range" min="0" max="1" step="0.01" value="0.85" />
     </div>
-    <div class="field">
-      <label>기본 생성 난이도</label>
-      <select id="defaultDifficulty">
-        <option value="easy">하</option>
-        <option value="normal" selected>중</option>
-        <option value="hard">상</option>
-      </select>
-    </div>
-  </div>
+</div>
 </section>
 
 <section id="game" class="screen">
@@ -368,12 +352,7 @@
     volume = settings.volume;
     $('#volumeRange').value = volume;
   }
-  if (settings.difficulty) {
-    $('#defaultDifficulty').value = settings.difficulty;
-    $('#difficulty').value = settings.difficulty;
-  }
-
-  $('#startHome').addEventListener('click', () => {
+$('#startHome').addEventListener('click', () => {
     home.classList.add('entered');
   });
 
@@ -413,15 +392,9 @@
     if (currentAudio) currentAudio.volume = volume;
   });
 
-  $('#defaultDifficulty').addEventListener('change', e => {
-    $('#difficulty').value = e.target.value;
-    saveSettings();
-  });
-
-  function saveSettings(){
+function saveSettings(){
     localStorage.setItem('selfRhythmSettings_ver2', JSON.stringify({
-      volume: Number($('#volumeRange').value),
-      difficulty: $('#defaultDifficulty').value
+      volume: Number($('#volumeRange').value)
     }));
   }
 
@@ -473,8 +446,6 @@
   $('#createGame').addEventListener('click', async () => {
     const file = $('#mp3Input').files[0];
     const title = ($('#gameTitle').value || '').trim() || '이름 없는 게임';
-    const difficulty = $('#difficulty').value;
-
     if(!file){
       setStatus('MP3 파일을 먼저 넣어줘.', 0);
       return;
@@ -488,7 +459,7 @@
       setStatus('진행사항 2 분석 중: 보컬 구간을 찾는 중...', 22);
       await waitFrame();
 
-      const notes = analyzeMusic(audioBuffer, difficulty, (msg,p)=>setStatus(msg,p));
+      const notes = analyzeMusic(audioBuffer, (msg,p)=>setStatus(msg,p));
 
       setStatus('오디오 저장 중...', 88);
       const id = uid();
@@ -500,7 +471,7 @@
       }
 
       const game = {
-        id, title, difficulty,
+        id, title,
         createdAt: Date.now(),
         duration: audioBuffer.duration,
         noteCount: notes.length,
@@ -526,20 +497,23 @@
     return new Promise(resolve=>requestAnimationFrame(resolve));
   }
 
-  function analyzeMusic(buffer, difficulty, progress){
+  function analyzeMusic(buffer, progress){
     const sampleRate = buffer.sampleRate;
     const raw = mixToMono(buffer);
 
-    // ver2.2: 보충 노트/BPM 채우기를 제거하고, 실제 음향 특징 기반으로만 노트 생성
+    // ver2.3: 난이도 선택 제거. 내부 기준은 기존 중~상 사이의 표준 채보로 고정.
+    // 보충/BPM 노트를 만들지 않고, 보컬 시작점 + 킥 + 의미 있는 악기 이벤트만 사용.
     const frameSize = Math.round(sampleRate * 0.046);
     const hop = Math.round(sampleRate * 0.023);
     const frames = [];
 
-    const diffCfg = {
-      easy:   {minGap:.34, syllableGap:.30, longMin:.82, eventGap:.50, density:0.72},
-      normal: {minGap:.24, syllableGap:.22, longMin:.64, eventGap:.36, density:0.92},
-      hard:   {minGap:.16, syllableGap:.16, longMin:.48, eventGap:.24, density:1.00}
-    }[difficulty] || {minGap:.24, syllableGap:.22, longMin:.64, eventGap:.36, density:.92};
+    const cfg = {
+      minGap:.20,
+      syllableGap:.18,
+      longMin:.55,
+      eventGap:.30,
+      vocalLaneGap:.16
+    };
 
     progress('음원을 읽고 보컬/악기 특징을 분리하는 중...', 24);
 
@@ -549,12 +523,11 @@
       let zc = 0;
       let prev = raw[start];
 
-      // 가벼운 필터뱅크: 브라우저 단독이라 FFT 대신 시간영역 필터 느낌으로 대역 성향 추정
-      let veryLow = 0;   // 킥/베이스 성향
-      let lowMid = 0;    // 남성 보컬 기초 성향
-      let mid = 0;       // 보컬 존재감
-      let highMid = 0;   // 여성 보컬/발음 자음 성향
-      let high = 0;      // 심벌/찰칵거림
+      let veryLow = 0;
+      let lowMid = 0;
+      let mid = 0;
+      let highMid = 0;
+      let high = 0;
 
       let lp1 = 0, lp2 = 0, lp3 = 0;
       let last = raw[start];
@@ -566,7 +539,6 @@
         if ((prev <= 0 && v > 0) || (prev >= 0 && v < 0)) zc++;
         prev = v;
 
-        // 아주 단순한 저역/중역/고역 대리 지표
         lp1 = lp1 * .985 + v * .015;
         lp2 = lp2 * .94 + v * .06;
         lp3 = lp3 * .78 + v * .22;
@@ -595,9 +567,6 @@
 
       const zcr = zc / frameSize;
 
-      // 남성/여성 보컬 후보 점수
-      // 남성: lowMid + mid가 중심이고, 킥처럼 veryLow만 과한 구간은 낮춤
-      // 여성: mid + highMid가 중심이고, 심벌처럼 high만 과한 구간은 낮춤
       const bassPenalty = clamp(1 - (veryLow / (mid + lowMid + 1e-8)) * .28, .15, 1.1);
       const cymbalPenalty = clamp(1 - (high / (mid + highMid + 1e-8)) * .22, .15, 1.1);
       const zcrVoice = clamp(1 - Math.abs(zcr - .07) * 6.5, .12, 1.25);
@@ -606,10 +575,7 @@
       const femaleVoice = (mid * 1.05 + highMid * .72) * cymbalPenalty * zcrVoice;
       const generalVoice = Math.max(maleVoice, femaleVoice);
 
-      // 킥은 아주 낮은 대역이 갑자기 튀는 경우
       const kickScore = veryLow * clamp((veryLow / (mid + high + 1e-8)) * .6, .25, 2.5);
-
-      // 악기 이벤트는 보컬이 약한 구간에서 전체 에너지/스펙트럼 변화가 큰 경우
       const eventScore = (mid * .6 + highMid * .75 + high * .35 + total * .25);
 
       frames.push({
@@ -632,40 +598,43 @@
     addFlux(frames, 'kickScoreSm', 'kickFlux');
 
     const profile = classifyVocalProfile(frames);
-    progress(`곡 타입 판별: ${profile.label}. 해당 대역 중심으로 노트 생성 중...`, 52);
+    progress(`곡 타입 판별: ${profile.label}. 보컬 시작점 중심으로 노트 생성 중...`, 52);
 
     const voiceField = profile.type === 'female' ? 'femaleVoiceSm' : profile.type === 'male' ? 'maleVoiceSm' : 'generalVoiceSm';
-    const voiceThreshold = percentile(frames.map(f=>f[voiceField]), profile.type === 'none' ? 90 : (difficulty === 'hard' ? 58 : difficulty === 'easy' ? 68 : 63));
-    const fluxThreshold = percentile(frames.map(f=>f.voiceFlux), difficulty === 'hard' ? 55 : difficulty === 'easy' ? 68 : 62);
+    const voiceThreshold = percentile(frames.map(f=>f[voiceField]), profile.type === 'none' ? 90 : 61);
+    const fluxThreshold = percentile(frames.map(f=>f.voiceFlux), 58);
 
     let vocalNotes = [];
     if(profile.type !== 'none'){
-      const syllablePeaks = detectSyllablePeaks(frames, voiceField, voiceThreshold, fluxThreshold, diffCfg.syllableGap);
-      const vocalSegments = detectVocalSegmentsByField(frames, voiceField, voiceThreshold * .78, diffCfg);
+      const syllablePeaks = detectSyllablePeaks(frames, voiceField, voiceThreshold, fluxThreshold, cfg.syllableGap);
+      const vocalSegments = detectVocalSegmentsByField(frames, voiceField, voiceThreshold * .80, cfg);
 
-      // 음절처럼 튀는 지점은 탭 노트
-      vocalNotes = syllablePeaks.map(p => ({
-        time:p.t,
-        lane:0,
-        type:'vocal',
-        long:false,
-        duration:0,
-        symbol:'❤️',
-        power:p.value
-      }));
+      vocalNotes = syllablePeaks.map((p, i) => {
+        const lane = chooseVocalLane(i, p.t, vocalNotes);
+        return {
+          time:p.t,
+          lane,
+          type:'vocal',
+          long:false,
+          duration:0,
+          symbol:symbols[lane],
+          power:p.value
+        };
+      });
 
-      // 길게 끄는 보컬은 롱노트로 추가하되, 내부 음절 피크가 많으면 롱노트 대신 음절 노트를 우선
+      // 긴 보컬은 롱노트. 다만 내부 음절 피크가 충분히 있으면 탭노트를 우선.
       for(const seg of vocalSegments){
         const dur = seg.end - seg.start;
         const inner = vocalNotes.filter(n => n.time >= seg.start && n.time <= seg.end).length;
-        if(dur >= diffCfg.longMin && inner <= Math.max(1, Math.floor(dur / .55))){
+        if(dur >= cfg.longMin && inner <= Math.max(1, Math.floor(dur / .50))){
+          const lane = chooseVocalLane(vocalNotes.length, seg.start, vocalNotes);
           vocalNotes.push({
             time:seg.start,
-            lane:0,
+            lane,
             type:'vocal',
             long:true,
             duration:Math.min(dur, 3.0),
-            symbol:'❤️',
+            symbol:symbols[lane],
             power:seg.power
           });
         }
@@ -674,34 +643,36 @@
 
     progress(`보컬 노트 ${vocalNotes.length}개 생성. 킥/악기 이벤트를 보조로 추가 중...`, 68);
 
-    const kickThreshold = percentile(frames.map(f=>f.kickFlux), difficulty === 'hard' ? 76 : difficulty === 'easy' ? 88 : 82);
-    const kickNotes = detectPeaks(frames, 'kickFlux', kickThreshold, difficulty === 'hard' ? .18 : .26)
-      .filter(p => profile.type === 'none' || !nearAny(vocalNotes, p.t, .12))
+    const kickThreshold = percentile(frames.map(f=>f.kickFlux), 80);
+    const kickNotes = detectPeaks(frames, 'kickFlux', kickThreshold, .24)
+      .filter(p => profile.type === 'none' || !nearAny(vocalNotes, p.t, .13))
       .map(p => ({time:p.t, lane:2, type:'kick', long:false, duration:0, symbol:'♦️', power:p.value}));
 
-    const eventThreshold = percentile(frames.map(f=>f.eventFlux), profile.type === 'none' ? 73 : 84);
-    const eventNotes = detectPeaks(frames, 'eventFlux', eventThreshold, diffCfg.eventGap)
-      .filter(p => !nearAny(vocalNotes, p.t, .16) && !nearAny(kickNotes, p.t, .12))
-      .map((p,i) => ({
-        time:p.t,
-        lane:i%2 ? 3 : 1,
-        type:'event',
-        long:false,
-        duration:0,
-        symbol:i%2 ? '♣️' : '♠️',
-        power:p.value
-      }));
+    const eventThreshold = percentile(frames.map(f=>f.eventFlux), profile.type === 'none' ? 74 : 86);
+    const eventNotes = detectPeaks(frames, 'eventFlux', eventThreshold, cfg.eventGap)
+      .filter(p => !nearAny(vocalNotes, p.t, .17) && !nearAny(kickNotes, p.t, .13))
+      .map((p,i) => {
+        const lane = i%2 ? 3 : 1;
+        return {
+          time:p.t,
+          lane,
+          type:'event',
+          long:false,
+          duration:0,
+          symbol:symbols[lane],
+          power:p.value
+        };
+      });
 
     progress('실제 감지된 노트만 정리하는 중...', 82);
 
-    let notes = mergeNotes([...vocalNotes, ...kickNotes, ...eventNotes], diffCfg.minGap);
-    notes = reduceDensity(notes, difficulty, profile.type);
+    let notes = mergeNotes([...vocalNotes, ...kickNotes, ...eventNotes], cfg.minGap);
+    notes = reduceDensity(notes);
 
     notes = notes
       .sort((a,b)=>a.time-b.time)
       .map((n,i,arr)=> {
-        // 같은 라인 반복을 줄이되, 보컬은 하트 라인 유지
-        if(i>0 && arr[i-1] && arr[i-1].lane === n.lane && !n.long && n.type !== 'vocal'){
+        if(i>0 && arr[i-1] && arr[i-1].lane === n.lane && !n.long){
           n.lane = (n.lane + 1) % 4;
           n.symbol = symbols[n.lane];
         }
@@ -718,8 +689,7 @@
       });
 
     if(notes.length < 8){
-      // 무작위/BPM 보충이 아니라, 실제 에너지 이벤트만 최후 보정으로 사용
-      notes = fallbackDetectedEvents(frames, buffer.duration, difficulty);
+      notes = fallbackDetectedEvents(frames, buffer.duration);
     }
 
     progress(`${profile.label} 기준 분석 완료! 노트 ${notes.length}개 생성`, 100);
@@ -784,7 +754,6 @@
     const activeRatio = frames.filter(f => (f.generalVoiceSm || 0) > genMid && f.total > 0.000012).length / Math.max(1, frames.length);
     const voiceContrast = genStrong / (percentile(genArr, 35) + 1e-9);
 
-    // 보컬 없음: 지속적인 보컬스러운 에너지가 적거나 대비가 너무 낮은 경우
     if(activeRatio < .18 || voiceContrast < 1.35){
       return {type:'none', label:'무보컬 또는 보컬 약함'};
     }
@@ -811,9 +780,10 @@
       const localPeak = voice >= (prev[voiceField] || 0) && voice >= (next[voiceField] || 0);
       const onset = (f.voiceFlux || 0) > fluxThreshold;
       const enoughEnergy = voice > threshold;
+      const stableVocal = f.total > 0.000012 && f.zcr > .015 && f.zcr < .22;
 
-      // 한 글자/음절 느낌: 보컬 에너지가 올라오는 시작점 또는 짧은 봉우리
-      if((enoughEnergy && onset) || (enoughEnergy * 1.18 && localPeak && (f.t-lastT)>minGap*1.25)){
+      // ver2.3: 보컬이 "있는 구간"이 아니라 보컬이 "새로 치고 들어오는 지점"을 우선.
+      if(stableVocal && ((enoughEnergy && onset) || (voice > threshold * 1.22 && localPeak && (f.t-lastT)>minGap*1.35))){
         if(f.t - lastT >= minGap){
           peaks.push({t:f.t, value:voice + (f.voiceFlux||0)});
           lastT = f.t;
@@ -829,7 +799,7 @@
     const minSilence = .18;
 
     for(const f of frames){
-      const active = (f[field] || 0) > threshold && f.total > 0.000012;
+      const active = (f[field] || 0) > threshold && f.total > 0.000012 && f.zcr > .015 && f.zcr < .22;
       if(active && !inSeg){
         inSeg = true; start = f.t; power = 0; count = 0;
       }
@@ -858,6 +828,14 @@
       }else merged.push({...s});
     }
     return merged;
+  }
+
+  function chooseVocalLane(i, t, existing){
+    const pattern = [0,1,2,3,1,2,0,3];
+    let lane = pattern[i % pattern.length];
+    const nearSame = existing.some(n => n.lane === lane && Math.abs(n.time - t) < .35);
+    if(nearSame) lane = (lane + 1) % 4;
+    return lane;
   }
 
   function detectPeaks(frames, field, threshold, minGap){
@@ -897,23 +875,22 @@
     return out.sort((a,b)=>a.time-b.time);
   }
 
-  function reduceDensity(notes, difficulty, profileType){
-    if(difficulty === 'hard') return notes;
+  function reduceDensity(notes){
     const sorted = [...notes].sort((a,b)=>a.time-b.time);
     const out = [];
-    const minGap = difficulty === 'easy' ? .34 : .22;
+    const minGap = .20;
     for(const n of sorted){
       const last = out[out.length-1];
-      if(!last || n.time - last.time >= minGap || n.type === 'vocal' || profileType === 'none'){
+      if(!last || n.time - last.time >= minGap || n.type === 'vocal'){
         out.push(n);
       }
     }
     return out;
   }
 
-  function fallbackDetectedEvents(frames, duration, difficulty){
-    const eventThreshold = percentile(frames.map(f=>f.eventFlux || 0), difficulty === 'hard' ? 70 : 78);
-    const peaks = detectPeaks(frames, 'eventFlux', eventThreshold, difficulty === 'hard' ? .28 : .42);
+  function fallbackDetectedEvents(frames, duration){
+    const eventThreshold = percentile(frames.map(f=>f.eventFlux || 0), 76);
+    const peaks = detectPeaks(frames, 'eventFlux', eventThreshold, .36);
     return peaks.slice(0, Math.max(8, Math.floor(duration / 2.5))).map((p,i)=>{
       const lane = [1,2,3,0][i%4];
       return {
@@ -943,7 +920,7 @@
       item.innerHTML = `
         <div>
           <div class="name">${escapeHtml(g.title)}</div>
-          <div class="meta">${g.noteCount||0} notes · ${Math.round(g.duration||0)}초 · ${labelDifficulty(g.difficulty)}</div>
+          <div class="meta">${g.noteCount||0} notes · ${Math.round(g.duration||0)}초 · 표준 채보</div>
         </div>
         <div class="actions">
           <button data-play="${g.id}">플레이</button>
@@ -966,11 +943,7 @@
     });
   }
 
-  function labelDifficulty(d){
-    return d==='easy'?'하':d==='hard'?'상':'중';
-  }
-
-  function escapeHtml(str){
+function escapeHtml(str){
     return String(str).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
   }
 
@@ -991,7 +964,7 @@
     $('#songProgressText').textContent = '0%';
 
     $('#playTitle').textContent = currentGame.title;
-    $('#playInfo').textContent = `보컬/킥/이벤트 · ${currentGame.noteCount} notes`;
+    $('#playInfo').textContent = `표준 채보 · 보컬/킥/이벤트 · ${currentGame.noteCount} notes`;
 
     home.classList.remove('active');
     gameScreen.classList.add('active');
@@ -1162,7 +1135,7 @@
     }
     notes.push({time:3.2,lane:0,type:'vocal',long:true,duration:1.4,symbol:'❤️',hit:false,missed:false});
     notes.push({time:8.1,lane:0,type:'vocal',long:true,duration:1.8,symbol:'❤️',hit:false,missed:false});
-    const game = {id:'example_ver2',title:'예시용 연습 게임',difficulty:'normal',createdAt:Date.now(),duration,noteCount:notes.length,notes};
+    const game = {id:'example_ver2',title:'예시용 연습 게임',createdAt:Date.now(),duration,noteCount:notes.length,notes};
     saveGames([game, ...getGames()]);
     localStorage.setItem(AUDIO_KEY_PREFIX+'example_ver2', makeExampleAudioDataUrl(duration));
   }
