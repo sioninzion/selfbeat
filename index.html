@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>셀-프 리듬게임 ver2.5</title>
+<title>셀-프 리듬게임 ver2.6</title>
 <style>
   :root{
     --bg:#07070c;
@@ -183,6 +183,8 @@
   .note.kick{box-shadow:0 0 25px rgba(255,209,102,.34)}
   .note.event{box-shadow:0 0 25px rgba(108,200,255,.34)}
   .note.melody{box-shadow:0 0 25px rgba(255,95,158,.34)}
+  .note.snare{box-shadow:0 0 25px rgba(160,130,255,.34)}
+  .note.hat{box-shadow:0 0 25px rgba(108,200,255,.34)}
   .controls{
     position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
     width:min(96vw,620px);display:grid;grid-template-columns:repeat(4,1fr);gap:8px;z-index:30;
@@ -237,7 +239,7 @@
 </style>
 </head>
 <body>
-<div class="version">ver2.5</div>
+<div class="version">ver2.6</div>
 
 <section id="home" class="screen active">
   <div class="title">셀-프 리듬게임</div>
@@ -262,12 +264,12 @@
 <button id="createGame">제작 시작</button>
     <div class="progressOuter"><div class="progressInner" id="progressBar"></div></div>
     <div class="analyzeStatus" id="analyzeStatus">
-      진행사항 2.5: 더 빠른 낙하 속도와 높은 난이도, 킥 중심 선별로 채보를 만듭니다.
+      진행사항 2.6: 킥/스네어/멜로디/하이햇을 소리 종류별로 분류해 고밀도 채보를 만듭니다.
     </div>
     <div class="legend">
-      <div>❤️ 멜로디 강세</div>
+      <div>❤️ 멜로디</div>
       <div>♦️ 킥</div>
-      <div>♠️♣️ 악기 이벤트</div>
+      <div>♠️ 스네어 · ♣️ 하이햇</div>
     </div>
   </div>
 
@@ -289,7 +291,7 @@
   <div class="hud">
     <div>
       <div class="hudTitle" id="playTitle">게임</div>
-      <div class="hudSub" id="playInfo">킥 + 멜로디 + 악기 이벤트 채보</div>
+      <div class="hudSub" id="playInfo">소리 종류 분류형 고밀도 채보</div>
     </div>
     <div class="score">
       <div id="scoreText">0</div>
@@ -502,21 +504,27 @@ function saveSettings(){
     const sampleRate = buffer.sampleRate;
     const raw = mixToMono(buffer);
 
-    // ver2.4: 보컬 인식 제거.
-    // 킥/저음 박자 + 멜로디 변화 + 악기 진입점만으로 채보 생성.
-    const frameSize = Math.round(sampleRate * 0.046);
-    const hop = Math.round(sampleRate * 0.023);
+    // ver2.6: 소리 종류별 분류형 채보 엔진
+    // 킥(♦️), 스네어/타격음(♠️), 멜로디/중역 변화(❤️), 하이햇/고음 반복(♣️)
+    const frameSize = Math.round(sampleRate * 0.038);
+    const hop = Math.round(sampleRate * 0.019);
     const frames = [];
 
+    const duration = buffer.duration;
+    const targetMin = Math.max(40, Math.floor(duration * 3.5));
+    const targetMax = Math.max(targetMin + 12, Math.floor(duration * 4.55));
+    const targetMid = Math.floor((targetMin + targetMax) / 2);
+
     const cfg = {
-      minGap:.13,
-      kickGap:.17,
-      melodyGap:.18,
-      eventGap:.26,
-      strongGap:.32
+      minGap:.105,
+      sameLaneGap:.135,
+      kickGap:.15,
+      snareGap:.17,
+      melodyGap:.16,
+      hatGap:.095
     };
 
-    progress('음원을 읽고 킥/멜로디/악기 변화를 분리하는 중...', 24);
+    progress('음원을 소리 종류별로 분해하는 중...', 18);
 
     for(let start=0; start + frameSize < raw.length; start += hop){
       const t = start / sampleRate;
@@ -525,13 +533,14 @@ function saveSettings(){
       let zc = 0;
       let prev = raw[start];
 
-      let sub = 0;       // 아주 낮은 저음
-      let low = 0;       // 킥/베이스
-      let mid = 0;       // 멜로디/보컬 포함 중역
-      let highMid = 0;   // 악기 어택/자음/리프
-      let high = 0;      // 심벌/고음
+      let sub = 0;
+      let low = 0;
+      let lowMid = 0;
+      let mid = 0;
+      let highMid = 0;
+      let high = 0;
 
-      let lp1 = 0, lp2 = 0, lp3 = 0;
+      let lp1 = 0, lp2 = 0, lp3 = 0, lp4 = 0;
       let last = raw[start];
 
       for(let i=0;i<frameSize;i++){
@@ -541,142 +550,139 @@ function saveSettings(){
         if ((prev <= 0 && v > 0) || (prev >= 0 && v < 0)) zc++;
         prev = v;
 
-        // 가벼운 시간영역 필터뱅크
-        lp1 = lp1 * .992 + v * .008;
-        lp2 = lp2 * .965 + v * .035;
-        lp3 = lp3 * .78 + v * .22;
+        // 시간영역 필터뱅크 느낌의 대역 분리
+        lp1 = lp1 * .994 + v * .006; // sub
+        lp2 = lp2 * .975 + v * .025; // low
+        lp3 = lp3 * .905 + v * .095; // mid
+        lp4 = lp4 * .70 + v * .30;   // high-mid
 
-        const bandSub = lp1;
-        const bandLow = lp2 - lp1;
-        const bandMid = lp3 - lp2;
-        const bandHigh = v - lp3;
+        const bSub = lp1;
+        const bLow = lp2 - lp1;
+        const bLowMid = lp3 - lp2;
+        const bMid = lp4 - lp3;
+        const bHigh = v - lp4;
         const diff = v - last;
         last = v;
 
-        sub += bandSub * bandSub;
-        low += bandLow * bandLow;
-        mid += bandMid * bandMid;
-        high += bandHigh * bandHigh;
-        highMid += diff * diff;
+        sub += bSub*bSub;
+        low += bLow*bLow;
+        lowMid += bLowMid*bLowMid;
+        mid += bMid*bMid;
+        high += bHigh*bHigh;
+        highMid += diff*diff;
       }
 
       const inv = 1 / frameSize;
       total *= inv;
       sub *= inv;
       low *= inv;
+      lowMid *= inv;
       mid *= inv;
       highMid *= inv;
       high *= inv;
 
       const zcr = zc / frameSize;
 
-      // 킥: 저음이 튀고, 고음/중역에 묻히지 않는 순간
-      const kickScore = (sub * 1.15 + low * 1.35) * clamp((sub + low) / (mid + high + 1e-8), .25, 2.4);
+      const bass = sub + low;
+      const body = lowMid + mid;
+      const brightness = highMid + high;
 
-      // 멜로디: 중역 변화 중심. 너무 저음만 큰 구간과 심벌만 큰 구간은 낮춤.
-      const bassPenalty = clamp(1 - ((sub + low) / (mid + highMid + 1e-8)) * .18, .25, 1.1);
-      const cymbalPenalty = clamp(1 - (high / (mid + highMid + 1e-8)) * .18, .25, 1.1);
-      const melodyScore = (mid * 1.25 + highMid * .38) * bassPenalty * cymbalPenalty;
+      // 종류별 점수
+      const kickScore = bass * clamp(bass / (body + brightness + 1e-8), .3, 2.8);
 
-      // 악기 진입/강세: 전체 에너지 변화 + 중고역 변화
-      const eventScore = total * .35 + mid * .55 + highMid * .75 + high * .18;
+      const snareScore = (lowMid * .55 + mid * .45 + highMid * .80) *
+        clamp(brightness / (bass + 1e-8), .45, 2.0) *
+        clamp(1 - Math.abs(zcr - .12) * 2.0, .35, 1.2);
+
+      const melodyScore = (lowMid * .75 + mid * 1.2 + highMid * .25) *
+        clamp(1 - bass / (body + brightness + 1e-8) * .12, .45, 1.1);
+
+      const hatScore = (high * 1.25 + highMid * .65) *
+        clamp(zcr * 8.0, .35, 2.2) *
+        clamp(1 - bass / (brightness + body + 1e-8) * .20, .35, 1.1);
 
       frames.push({
         t,total,zcr,
-        sub,low,mid,highMid,high,
-        kickScore,melodyScore,eventScore
+        sub,low,lowMid,mid,highMid,high,
+        kickScore,snareScore,melodyScore,hatScore
       });
     }
 
-    progress('변화량을 계산해 의미 있는 소리만 추리는 중...', 44);
+    progress('킥/스네어/멜로디/하이햇 후보를 계산하는 중...', 36);
 
-    smoothField(frames,'kickScore',3);
-    smoothField(frames,'melodyScore',4);
-    smoothField(frames,'eventScore',3);
+    smoothField(frames,'kickScore',2);
+    smoothField(frames,'snareScore',2);
+    smoothField(frames,'melodyScore',3);
+    smoothField(frames,'hatScore',1);
 
-    addFlux(frames, 'kickScoreSm', 'kickFlux');
-    addFlux(frames, 'melodyScoreSm', 'melodyFlux');
-    addFlux(frames, 'eventScoreSm', 'eventFlux');
+    addFlux(frames, 'kickScoreSm', 'kickFlux', .68);
+    addFlux(frames, 'snareScoreSm', 'snareFlux', .66);
+    addFlux(frames, 'melodyScoreSm', 'melodyFlux', .70);
+    addFlux(frames, 'hatScoreSm', 'hatFlux', .58);
 
-    const songEnergy = percentile(frames.map(f=>f.total), 65);
-    const activeFrames = frames.filter(f => f.total > songEnergy * .42);
-    const isQuietSong = percentile(frames.map(f=>f.total), 90) < 0.00022;
+    const energyGate = percentile(frames.map(f=>f.total), 42);
 
-    progress('킥 노트를 생성하는 중...', 58);
+    progress('소리 종류별 상위 이벤트를 고르는 중...', 54);
 
-    const kickThreshold = percentile(frames.map(f=>f.kickFlux), isQuietSong ? 72 : 77);
-    const kickNotes = detectPeaks(frames, 'kickFlux', kickThreshold, cfg.kickGap)
-      .filter(p => frames[p.index]?.total > songEnergy * .28)
-      .map(p => ({
-        time:p.t,
-        lane:2,
-        type:'kick',
-        long:false,
-        duration:0,
-        symbol:'♦️',
-        power:p.value
-      }));
+    const quota = buildQuotas(duration, targetMid);
 
-    progress('멜로디 변화 노트를 생성하는 중...', 70);
+    const kickCandidates = detectPeaks(frames, 'kickFlux', percentile(frames.map(f=>f.kickFlux), 64), cfg.kickGap)
+      .filter(p => frames[p.index].total > energyGate * .6)
+      .map(p => ({...p, lane:2, type:'kick', symbol:'♦️', weight:p.value * 1.25}));
 
-    const melodyThreshold = percentile(frames.map(f=>f.melodyFlux), isQuietSong ? 70 : 76);
-    const melodyNotes = detectPeaks(frames, 'melodyFlux', melodyThreshold, cfg.melodyGap)
-      .filter(p => !nearAny(kickNotes, p.t, .13))
-      .map((p,i) => {
-        const lane = chooseMelodyLane(i, p.t, []);
-        return {
-          time:p.t,
-          lane,
-          type:'melody',
-          long:false,
-          duration:0,
-          symbol:symbols[lane],
-          power:p.value
-        };
-      });
+    const snareCandidates = detectPeaks(frames, 'snareFlux', percentile(frames.map(f=>f.snareFlux), 60), cfg.snareGap)
+      .filter(p => frames[p.index].total > energyGate * .55)
+      .map(p => ({...p, lane:1, type:'snare', symbol:'♠️', weight:p.value * 1.10}));
 
-    progress('악기 진입점/강세 노트를 추가하는 중...', 80);
+    const melodyCandidates = detectPeaks(frames, 'melodyFlux', percentile(frames.map(f=>f.melodyFlux), 56), cfg.melodyGap)
+      .filter(p => frames[p.index].total > energyGate * .48)
+      .map((p,i) => ({...p, lane: chooseMelodyLane(i), type:'melody', symbol:null, weight:p.value}));
 
-    const eventThreshold = percentile(frames.map(f=>f.eventFlux), isQuietSong ? 82 : 88);
-    const eventNotes = detectPeaks(frames, 'eventFlux', eventThreshold, cfg.eventGap)
-      .filter(p => !nearAny(kickNotes, p.t, .18) && !nearAny(melodyNotes, p.t, .16))
-      .sort((a,b)=>b.value-a.value)
-      .slice(0, Math.max(8, Math.floor(buffer.duration / 5.5)))
-      .sort((a,b)=>a.t-b.t)
-      .map((p,i) => {
-        const lane = i % 2 ? 3 : 1;
-        return {
-          time:p.t,
-          lane,
-          type:'event',
-          long:false,
-          duration:0,
-          symbol:symbols[lane],
-          power:p.value
-        };
-      });
+    const hatCandidates = detectPeaks(frames, 'hatFlux', percentile(frames.map(f=>f.hatFlux), 52), cfg.hatGap)
+      .filter(p => frames[p.index].total > energyGate * .42)
+      .map(p => ({...p, lane:3, type:'hat', symbol:'♣️', weight:p.value * .88}));
 
-    progress('노트 충돌을 정리하는 중...', 88);
+    progress(`후보: 킥 ${kickCandidates.length}, 스네어 ${snareCandidates.length}, 멜로디 ${melodyCandidates.length}, 하이햇 ${hatCandidates.length}`, 68);
 
-    let notes = mergeNotes([...kickNotes, ...melodyNotes, ...eventNotes], cfg.minGap);
-    notes = refinePlayablePattern(notes);
+    let selected = [
+      ...pickTopDistributed(kickCandidates, quota.kick, cfg.kickGap),
+      ...pickTopDistributed(snareCandidates, quota.snare, cfg.snareGap),
+      ...pickTopDistributed(melodyCandidates, quota.melody, cfg.melodyGap),
+      ...pickTopDistributed(hatCandidates, quota.hat, cfg.hatGap)
+    ];
 
-    // 보컬/BPM 보충이 아니라, 실제 감지 이벤트가 너무 적을 때만 멜로디/이벤트 임계값을 한 단계 낮춰 보정
-    if(notes.length < 10){
-      const softMelody = detectPeaks(frames, 'melodyFlux', percentile(frames.map(f=>f.melodyFlux), 68), .26)
-        .filter(p => !nearAny(notes, p.t, .15))
-        .map((p,i)=>{
-          const lane = [0,1,3,2][i%4];
-          return {time:p.t,lane,type:'melody',long:false,duration:0,symbol:symbols[lane],power:p.value};
-        });
-      notes = mergeNotes([...notes, ...softMelody], cfg.minGap);
-      notes = refinePlayablePattern(notes);
+    progress('노트 충돌을 정리하고 부족한 종류를 보강하는 중...', 82);
+
+    let notes = mergeClassifiedNotes(selected, cfg.minGap);
+
+    // 목표치에 부족하면 전체 후보 중 아직 안 쓴 강한 이벤트를 종류별로 추가
+    if(notes.length < targetMin){
+      const all = [...kickCandidates, ...snareCandidates, ...melodyCandidates, ...hatCandidates]
+        .sort((a,b)=>b.weight-a.weight);
+      for(const c of all){
+        if(notes.length >= targetMin) break;
+        if(!nearAny(notes, c.t, cfg.minGap)){
+          notes.push(candidateToNote(c));
+          notes = notes.sort((a,b)=>a.time-b.time);
+        }
+      }
     }
+
+    // 너무 많으면 약한 하이햇/이벤트부터 줄임
+    if(notes.length > targetMax){
+      notes = notes
+        .map(n => ({...n, keepScore: n.power * (n.type === 'kick' ? 1.25 : n.type === 'snare' ? 1.1 : n.type === 'melody' ? 1.0 : .82)}))
+        .sort((a,b)=>b.keepScore-a.keepScore)
+        .slice(0, targetMax)
+        .sort((a,b)=>a.time-b.time);
+    }
+
+    notes = refinePlayablePattern(notes, cfg);
 
     notes = notes
       .sort((a,b)=>a.time-b.time)
       .map((n,i,arr)=> {
-        if(i>0 && arr[i-1] && arr[i-1].lane === n.lane){
+        if(i>0 && arr[i-1] && arr[i-1].lane === n.lane && (n.time - arr[i-1].time) < cfg.sameLaneGap){
           n.lane = chooseAlternateLane(n.lane, i);
           n.symbol = symbols[n.lane];
         }
@@ -692,8 +698,18 @@ function saveSettings(){
         };
       });
 
-    progress(`킥 우선/강한 멜로디/선별 이벤트 기준 분석 완료! 노트 ${notes.length}개 생성`, 100);
+    progress(`소리 종류별 분석 완료! 목표 ${targetMin}~${targetMax}개 / 생성 ${notes.length}개`, 100);
     return notes;
+  }
+
+  function buildQuotas(duration, target){
+    // 44초 곡 기준 대략 150~200개 목표
+    return {
+      kick: Math.floor(target * .20),
+      snare: Math.floor(target * .20),
+      melody: Math.floor(target * .32),
+      hat: Math.floor(target * .28)
+    };
   }
 
   function mixToMono(buffer){
@@ -723,14 +739,14 @@ function saveSettings(){
     frames.forEach((f,i)=>f[field+'Sm']=out[i]);
   }
 
-  function addFlux(frames, sourceField, outField){
+  function addFlux(frames, sourceField, outField, memory=.70){
     let prev = frames[0]?.[sourceField] || 0;
     for(const f of frames){
       const now = f[sourceField] || 0;
       f[outField] = Math.max(0, now - prev);
-      prev = prev * .70 + now * .30;
+      prev = prev * memory + now * (1-memory);
     }
-    smoothField(frames, outField, 2);
+    smoothField(frames, outField, 1);
     for(const f of frames) f[outField] = f[outField + 'Sm'];
   }
 
@@ -748,7 +764,7 @@ function saveSettings(){
       const a = frames[i-1][field] || 0;
       const b = frames[i][field] || 0;
       const c = frames[i+1][field] || 0;
-      const clearPeak = b > threshold && b > a * 1.12 && b >= c * .98;
+      const clearPeak = b > threshold && b > a * 1.03 && b >= c * .96;
       if(clearPeak && frames[i].t - lastT >= minGap){
         peaks.push({t:frames[i].t, value:b, index:i});
         lastT = frames[i].t;
@@ -757,16 +773,21 @@ function saveSettings(){
     return peaks;
   }
 
-  function nearAny(notes, t, gap){
-    return notes.some(n => Math.abs(n.time - t) < gap);
+  function pickTopDistributed(candidates, count, minGap){
+    const picked = [];
+    const sorted = [...candidates].sort((a,b)=>b.weight-a.weight);
+    for(const c of sorted){
+      if(picked.length >= count) break;
+      if(!picked.some(p => Math.abs(p.t - c.t) < minGap)){
+        picked.push(c);
+      }
+    }
+    return picked.sort((a,b)=>a.t-b.t);
   }
 
-  function chooseMelodyLane(i, t, existing){
-    const pattern = [0,1,3,0,2,1,3,2];
-    let lane = pattern[i % pattern.length];
-    const nearSame = existing.some(n => n.lane === lane && Math.abs(n.time - t) < .34);
-    if(nearSame) lane = (lane + 1) % 4;
-    return lane;
+  function chooseMelodyLane(i){
+    const pattern = [0,0,1,0,3,0,2,1,0,3];
+    return pattern[i % pattern.length];
   }
 
   function chooseAlternateLane(lane, i){
@@ -774,35 +795,62 @@ function saveSettings(){
     return options[i % options.length];
   }
 
-  function priority(type){
-    if(type === 'kick') return 3;
-    if(type === 'melody') return 2;
-    return 1;
+  function candidateToNote(c){
+    const lane = c.lane ?? 0;
+    return {
+      time:c.t,
+      lane,
+      type:c.type,
+      long:false,
+      duration:0,
+      symbol:c.symbol || symbols[lane],
+      power:c.weight || c.value || 0,
+      hit:false,
+      missed:false
+    };
   }
 
-  function mergeNotes(notes, minGap){
-    notes.sort((a,b)=>a.time-b.time || priority(b.type)-priority(a.type));
+  function priority(type){
+    if(type === 'kick') return 4;
+    if(type === 'snare') return 3;
+    if(type === 'melody') return 2;
+    if(type === 'hat') return 1;
+    return 0;
+  }
+
+  function mergeClassifiedNotes(candidates, minGap){
+    const sorted = candidates
+      .map(candidateToNote)
+      .sort((a,b)=>a.time-b.time || priority(b.type)-priority(a.type));
+
     const out = [];
-    for(const n of notes){
+    for(const n of sorted){
       const near = out.find(o => Math.abs(o.time - n.time) < minGap);
       if(!near){
         out.push({...n});
-      }else if(priority(n.type) > priority(near.type)){
-        Object.assign(near, n);
+      }else{
+        const nScore = (n.power || 0) * (1 + priority(n.type) * .08);
+        const nearScore = (near.power || 0) * (1 + priority(near.type) * .08);
+        if(nScore > nearScore){
+          Object.assign(near, n);
+        }
       }
     }
     return out.sort((a,b)=>a.time-b.time);
   }
 
-  function refinePlayablePattern(notes){
+  function nearAny(notes, t, gap){
+    return notes.some(n => Math.abs(n.time - t) < gap);
+  }
+
+  function refinePlayablePattern(notes, cfg){
     const sorted = [...notes].sort((a,b)=>a.time-b.time);
     const out = [];
-    const minGap = .13;
     for(const n of sorted){
       const last = out[out.length-1];
-      if(!last || n.time - last.time >= minGap){
+      if(!last || n.time - last.time >= cfg.minGap){
         out.push(n);
-      }else if(priority(n.type) > priority(last.type)){
+      }else if((n.power || 0) * (1 + priority(n.type)*.08) > (last.power || 0) * (1 + priority(last.type)*.08)){
         out[out.length-1] = n;
       }
     }
@@ -867,7 +915,7 @@ function escapeHtml(str){
     $('#songProgressText').textContent = '0%';
 
     $('#playTitle').textContent = currentGame.title;
-    $('#playInfo').textContent = `표준 채보 · 킥/멜로디/이벤트 · ${currentGame.noteCount} notes`;
+    $('#playInfo').textContent = `분류형 채보 · 킥/스네어/멜로디/하이햇 · ${currentGame.noteCount} notes`;
 
     home.classList.remove('active');
     gameScreen.classList.add('active');
@@ -915,7 +963,7 @@ function escapeHtml(str){
     const txt = $('#songProgressText');
     if(bar) bar.style.width = pct.toFixed(1) + '%';
     if(txt) txt.textContent = Math.floor(pct) + '%';
-    const travel = 1.45;
+    const travel = 1.32;
     const laneHeight = $('.lane').clientHeight;
     const hitY = laneHeight - 32;
 
