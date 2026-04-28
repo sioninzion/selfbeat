@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>셀-프 리듬게임 ver2.6</title>
+<title>셀-프 리듬게임 ver2.7</title>
 <style>
   :root{
     --bg:#07070c;
@@ -221,6 +221,13 @@
     opacity:0;transition:.15s;z-index:35;
   }
   .judge.show{opacity:1;transform:translate(-50%,-58%)}
+  .countdown{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.9);
+    font-size:clamp(76px,22vw,170px);font-weight:1000;z-index:60;
+    opacity:0;pointer-events:none;text-shadow:0 0 40px rgba(255,255,255,.45),0 12px 40px rgba(0,0,0,.5);
+    transition:.18s ease;
+  }
+  .countdown.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
   .legend{
     display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;font-size:12px;color:var(--muted)
   }
@@ -239,7 +246,7 @@
 </style>
 </head>
 <body>
-<div class="version">ver2.6</div>
+<div class="version">ver2.7</div>
 
 <section id="home" class="screen active">
   <div class="title">셀-프 리듬게임</div>
@@ -264,7 +271,7 @@
 <button id="createGame">제작 시작</button>
     <div class="progressOuter"><div class="progressInner" id="progressBar"></div></div>
     <div class="analyzeStatus" id="analyzeStatus">
-      진행사항 2.6: 킥/스네어/멜로디/하이햇을 소리 종류별로 분류해 고밀도 채보를 만듭니다.
+      진행사항 2.7: 멜로디 비중을 높이고 반복 키를 줄이며, 시작 전 3초 카운트다운을 추가합니다.
     </div>
     <div class="legend">
       <div>❤️ 멜로디</div>
@@ -310,6 +317,7 @@
   </div>
   <div class="hitLine"></div>
   <div class="judge" id="judge">PERFECT</div>
+  <div class="countdown" id="countdown">3</div>
   <div class="controls">
     <button class="pad" data-lane="0"><span>❤️</span><span class="key">D</span></button>
     <button class="pad" data-lane="1"><span>♠️</span><span class="key">F</span></button>
@@ -594,8 +602,10 @@ function saveSettings(){
         clamp(brightness / (bass + 1e-8), .45, 2.0) *
         clamp(1 - Math.abs(zcr - .12) * 2.0, .35, 1.2);
 
-      const melodyScore = (lowMid * .75 + mid * 1.2 + highMid * .25) *
-        clamp(1 - bass / (body + brightness + 1e-8) * .12, .45, 1.1);
+      // 멜로디는 베이스에 눌리지 않도록 중역 변화량을 더 크게 반영하고,
+      // 베이스 페널티를 약하게 적용한다.
+      const melodyScore = (lowMid * .95 + mid * 1.55 + highMid * .34) *
+        clamp(1 - bass / (body + brightness + 1e-8) * .055, .68, 1.16);
 
       const hatScore = (high * 1.25 + highMid * .65) *
         clamp(zcr * 8.0, .35, 2.2) *
@@ -634,11 +644,11 @@ function saveSettings(){
       .filter(p => frames[p.index].total > energyGate * .55)
       .map(p => ({...p, lane:1, type:'snare', symbol:'♠️', weight:p.value * 1.10}));
 
-    const melodyCandidates = detectPeaks(frames, 'melodyFlux', percentile(frames.map(f=>f.melodyFlux), 56), cfg.melodyGap)
+    const melodyCandidates = detectPeaks(frames, 'melodyFlux', percentile(frames.map(f=>f.melodyFlux), 48), cfg.melodyGap)
       .filter(p => frames[p.index].total > energyGate * .48)
       .map((p,i) => ({...p, lane: chooseMelodyLane(i), type:'melody', symbol:null, weight:p.value}));
 
-    const hatCandidates = detectPeaks(frames, 'hatFlux', percentile(frames.map(f=>f.hatFlux), 52), cfg.hatGap)
+    const hatCandidates = detectPeaks(frames, 'hatFlux', percentile(frames.map(f=>f.hatFlux), 58), cfg.hatGap)
       .filter(p => frames[p.index].total > energyGate * .42)
       .map(p => ({...p, lane:3, type:'hat', symbol:'♣️', weight:p.value * .88}));
 
@@ -679,20 +689,18 @@ function saveSettings(){
 
     notes = refinePlayablePattern(notes, cfg);
 
+    notes = rebalanceRepeatedLanes(notes, cfg);
+
     notes = notes
       .sort((a,b)=>a.time-b.time)
-      .map((n,i,arr)=> {
-        if(i>0 && arr[i-1] && arr[i-1].lane === n.lane && (n.time - arr[i-1].time) < cfg.sameLaneGap){
-          n.lane = chooseAlternateLane(n.lane, i);
-          n.symbol = symbols[n.lane];
-        }
+      .map((n)=> {
         return {
           time: round(n.time,3),
           lane:n.lane,
           type:n.type,
           long:false,
           duration:0,
-          symbol:n.symbol || symbols[n.lane],
+          symbol:symbols[n.lane],
           hit:false,
           missed:false
         };
@@ -705,10 +713,10 @@ function saveSettings(){
   function buildQuotas(duration, target){
     // 44초 곡 기준 대략 150~200개 목표
     return {
-      kick: Math.floor(target * .20),
-      snare: Math.floor(target * .20),
-      melody: Math.floor(target * .32),
-      hat: Math.floor(target * .28)
+      kick: Math.floor(target * .17),
+      snare: Math.floor(target * .19),
+      melody: Math.floor(target * .42),
+      hat: Math.floor(target * .22)
     };
   }
 
@@ -786,8 +794,57 @@ function saveSettings(){
   }
 
   function chooseMelodyLane(i){
-    const pattern = [0,0,1,0,3,0,2,1,0,3];
+    // 멜로디는 하트가 중심이지만, 같은 키 반복을 줄이기 위해 4라인에 섞어 배치
+    const pattern = [0,1,0,2,0,3,1,0,2,0,3,0];
     return pattern[i % pattern.length];
+  }
+
+  function rebalanceRepeatedLanes(notes, cfg){
+    const sorted = [...notes].sort((a,b)=>a.time-b.time);
+    let streakLane = -1;
+    let streak = 0;
+
+    for(let i=0;i<sorted.length;i++){
+      const n = sorted[i];
+      const prev = sorted[i-1];
+
+      if(prev && prev.lane === n.lane){
+        streak++;
+      }else{
+        streakLane = n.lane;
+        streak = 1;
+      }
+
+      const tooCloseSame = prev && prev.lane === n.lane && (n.time - prev.time) < cfg.sameLaneGap * 2.2;
+      const tooLongStreak = streak >= 3;
+
+      if(tooCloseSame || tooLongStreak){
+        const recent = sorted.slice(Math.max(0, i-4), i).map(x=>x.lane);
+        n.lane = chooseLeastRecentLane(recent, n.type, i);
+        n.symbol = symbols[n.lane];
+        streakLane = n.lane;
+        streak = 1;
+      }
+    }
+    return sorted;
+  }
+
+  function chooseLeastRecentLane(recent, type, i){
+    const preferred = type === 'kick' ? [2,0,1,3] :
+                      type === 'snare' ? [1,3,0,2] :
+                      type === 'hat' ? [3,1,2,0] :
+                      [0,1,2,3];
+    let best = preferred[0];
+    let bestScore = 999;
+    for(const lane of preferred){
+      const lastIdx = recent.lastIndexOf(lane);
+      const score = lastIdx === -1 ? -10 : lastIdx;
+      if(score < bestScore){
+        bestScore = score;
+        best = lane;
+      }
+    }
+    return best;
   }
 
   function chooseAlternateLane(lane, i){
@@ -927,7 +984,8 @@ function escapeHtml(str){
 
     buildNoteElements();
 
-    currentAudio.addEventListener('canplay', () => {
+    currentAudio.addEventListener('canplay', async () => {
+      await runCountdown();
       startTime = performance.now()/1000 + 0.05;
       currentAudio.play().catch(()=>showToast('재생을 다시 눌러줘'));
       loop();
@@ -984,6 +1042,34 @@ function escapeHtml(str){
       }
     }
     rafId = requestAnimationFrame(loop);
+  }
+
+  function runCountdown(){
+    const el = $('#countdown');
+    return new Promise(resolve => {
+      let n = 3;
+      el.textContent = n;
+      el.classList.add('show');
+      const timer = setInterval(() => {
+        n--;
+        if(n > 0){
+          el.textContent = n;
+          el.classList.remove('show');
+          void el.offsetWidth;
+          el.classList.add('show');
+        }else{
+          clearInterval(timer);
+          el.textContent = 'START';
+          el.classList.remove('show');
+          void el.offsetWidth;
+          el.classList.add('show');
+          setTimeout(() => {
+            el.classList.remove('show');
+            resolve();
+          }, 450);
+        }
+      }, 1000);
+    });
   }
 
   function stopGame(){
