@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>셀-프 리듬게임 ver2.11.1</title>
+<title>셀-프 리듬게임 ver2.11.2</title>
 <style>
   :root{
     --bg:#07070c;
@@ -78,7 +78,7 @@
   .menu.hide{transform:translateX(-150%)}
   .menu button{width:170px;text-align:left;font-weight:800}
   .maker{
-    position:absolute;top:-440px;left:50%;transform:translateX(-50%);
+    position:absolute;top:0;left:50%;transform:translate(-50%, -140vh);
     width:min(92vw,520px);
     padding:22px;
     border-radius:26px;
@@ -88,7 +88,7 @@
     box-shadow:0 20px 70px rgba(0,0,0,.4);
     transition:.65s cubic-bezier(.22,1,.36,1);
   }
-  .maker.show{top:90px}
+  .maker.show{top:90px;transform:translate(-50%, 0)}
   .maker h2{margin:0 0 14px}
   .field{margin:13px 0}
   .field label{display:block;margin-bottom:7px;color:var(--muted);font-size:14px}
@@ -330,7 +330,7 @@
   @media(max-width:520px){
     .entered .title{font-size:22px}
     .menu{top:92px}
-    .maker.show{top:78px}
+    .maker.show{top:78px;transform:translate(-50%, 0)}
     .hud{height:104px;padding-right:74px}
     .score{font-size:32px}
     .pad{height:76px;font-size:31px}
@@ -343,7 +343,7 @@
 </style>
 </head>
 <body>
-<div class="version">ver2.11.1</div>
+<div class="version">ver2.11.2</div>
 
 <section id="home" class="screen active">
   <div class="title">셀-프 리듬게임</div>
@@ -378,8 +378,9 @@
     </div>
 <button id="createGame">제작 시작</button>
     <div class="progressOuter"><div class="progressInner" id="progressBar"></div></div>
+    <div style="font-size:12px;color:var(--muted);margin-top:8px">오디오는 큰 파일에 더 적합한 IndexedDB 저장 방식을 사용합니다.</div>
     <div class="analyzeStatus" id="analyzeStatus">
-      진행사항 2.11.1: 노트 속도 설정을 설정 화면으로 옮기고, 0.5x~3.0x가 실제 플레이에 반영되도록 수정했습니다.</div>
+      진행사항 2.11.2: 제작 박스를 완전히 숨긴 뒤 내려오게 하고, 큰 음악 파일 저장을 IndexedDB 방식으로 개선했습니다.</div>
     <div class="legend">
       <div>❤️ 멜로디</div>
       <div>♦️ 킥</div>
@@ -586,6 +587,56 @@ function saveSettings(){
     return 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
   }
 
+  const DB_NAME = 'selfRhythmAudioDB_v1';
+  const DB_STORE = 'audioFiles';
+
+  function openAudioDB(){
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if(!db.objectStoreNames.contains(DB_STORE)){
+          db.createObjectStore(DB_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('IndexedDB open failed'));
+    });
+  }
+
+  async function saveAudioBlob(id, file){
+    const db = await openAudioDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_STORE, 'readwrite');
+      tx.objectStore(DB_STORE).put(file, id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('IndexedDB save failed'));
+    });
+  }
+
+  async function loadAudioBlob(id){
+    const db = await openAudioDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_STORE, 'readonly');
+      const req = tx.objectStore(DB_STORE).get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error || new Error('IndexedDB load failed'));
+    });
+  }
+
+  async function deleteAudioBlob(id){
+    try{
+      const db = await openAudioDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).delete(id);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+    }catch(e){}
+  }
+
+
   async function fileToDataUrl(file){
     return await new Promise((resolve,reject)=>{
       const r = new FileReader();
@@ -620,13 +671,12 @@ function saveSettings(){
 
       const notes = analyzeMusic(audioBuffer, selectedDifficulty, (msg,p)=>setStatus(msg,p));
 
-      setStatus('오디오 저장 중...', 88);
+      setStatus('오디오 저장 중... 큰 파일을 위해 IndexedDB에 저장합니다.', 88);
       const id = uid();
-      const dataUrl = await fileToDataUrl(file);
       try{
-        localStorage.setItem(AUDIO_KEY_PREFIX + id, dataUrl);
+        await saveAudioBlob(id, file);
       }catch(e){
-        throw new Error('오디오 파일이 커서 브라우저 저장공간에 저장하지 못했어. 더 짧은 MP3로 테스트해줘.');
+        throw new Error('오디오 파일 저장에 실패했어. iOS라면 저장 공간을 확보하거나 더 짧은 파일로 다시 시도해줘.');
       }
 
       const game = {
@@ -1159,6 +1209,7 @@ function saveSettings(){
         const id = btn.dataset.del;
         saveGames(getGames().filter(g=>g.id!==id));
         localStorage.removeItem(AUDIO_KEY_PREFIX+id);
+        deleteAudioBlob(id);
         renderList();
       });
     });
@@ -1168,10 +1219,17 @@ function escapeHtml(str){
     return String(str).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
   }
 
-  function playGame(id){
+  async function playGame(id){
     const game = getGames().find(g=>g.id===id);
-    const audioData = localStorage.getItem(AUDIO_KEY_PREFIX+id);
-    if(!game || !audioData){
+    let audioBlob = null;
+    let audioData = null;
+    try{
+      audioBlob = await loadAudioBlob(id);
+    }catch(e){}
+    if(!audioBlob){
+      audioData = localStorage.getItem(AUDIO_KEY_PREFIX+id);
+    }
+    if(!game || (!audioBlob && !audioData)){
       showToast('오디오를 찾을 수 없음');
       return;
     }
@@ -1194,7 +1252,9 @@ function escapeHtml(str){
     gameScreen.classList.add('active');
     exitBtn.classList.add('show');
 
-    currentAudio = new Audio(audioData);
+    const audioSrc = audioBlob ? URL.createObjectURL(audioBlob) : audioData;
+    currentAudio = new Audio(audioSrc);
+    currentAudio._objectUrl = audioBlob ? audioSrc : null;
     currentAudio.volume = volume;
     currentAudio.preload = 'auto';
 
@@ -1332,6 +1392,7 @@ function escapeHtml(str){
     rafId = null;
     if(currentAudio){
       currentAudio.pause();
+      if(currentAudio._objectUrl) URL.revokeObjectURL(currentAudio._objectUrl);
       currentAudio.src = '';
       currentAudio = null;
     }
