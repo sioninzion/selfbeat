@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>셀-프 리듬게임 ver2.0</title>
+<style>
+  :root{
+    --bg:#07070c;
+    --panel:rgba(255,255,255,.08);
+    --panel2:rgba(255,255,255,.12);
+    --text:#f7f7fb;
+    --muted:#aaaabd;
+    --accent:#ff5f9e;
+    --good:#56e39f;
+    --warn:#ffd166;
+    --bad:#ff5a5f;
+    --blue:#6cc8ff;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;
+    min-height:100vh;
+    background:radial-gradient(circle at 25% 10%, #2b1645 0, transparent 35%),
+               radial-gradient(circle at 80% 80%, #112d4e 0, transparent 40%),
+               var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Pretendard,Arial,sans-serif;
+    overflow:hidden;
+  }
+  button,input,select{font:inherit}
+  button{
+    border:0;
+    border-radius:18px;
+    color:white;
+    background:var(--panel2);
+    padding:14px 18px;
+    cursor:pointer;
+    box-shadow:0 10px 30px rgba(0,0,0,.25);
+    transition:.18s transform,.18s opacity,.18s background;
+  }
+  button:active{transform:scale(.96)}
+  .version{
+    position:fixed;top:14px;right:16px;z-index:50;
+    color:rgba(255,255,255,.72);font-size:13px;font-weight:700;
+  }
+  .screen{position:fixed;inset:0;display:none}
+  .screen.active{display:block}
+  #home{display:flex;align-items:center;justify-content:center}
+  .title{
+    position:absolute;
+    font-family:"Gungsuh","궁서",serif;
+    font-size:clamp(38px,9vw,92px);
+    letter-spacing:-2px;
+    text-shadow:0 10px 35px rgba(255,95,158,.25);
+    transition:.75s cubic-bezier(.22,1,.36,1);
+    text-align:center;
+    width:100%;
+  }
+  .entered .title{
+    top:18px;left:22px;width:auto;font-size:26px;text-align:left;
+    transform:none;
+  }
+  .startBtn{
+    position:absolute;
+    top:62%;
+    font-size:22px;
+    padding:18px 34px;
+    background:linear-gradient(135deg,#ff5f9e,#7c5cff);
+  }
+  .entered .startBtn{opacity:0;pointer-events:none;transform:translateY(30px)}
+  .menu{
+    position:absolute;left:22px;top:110px;display:flex;flex-direction:column;gap:14px;
+    transform:translateX(-140%);transition:.55s cubic-bezier(.22,1,.36,1);
+  }
+  .entered .menu{transform:translateX(0)}
+  .menu.hide{transform:translateX(-150%)}
+  .menu button{width:170px;text-align:left;font-weight:800}
+  .maker{
+    position:absolute;top:-440px;left:50%;transform:translateX(-50%);
+    width:min(92vw,520px);
+    padding:22px;
+    border-radius:26px;
+    background:rgba(16,16,27,.88);
+    backdrop-filter:blur(18px);
+    border:1px solid rgba(255,255,255,.12);
+    box-shadow:0 20px 70px rgba(0,0,0,.4);
+    transition:.65s cubic-bezier(.22,1,.36,1);
+  }
+  .maker.show{top:90px}
+  .maker h2{margin:0 0 14px}
+  .field{margin:13px 0}
+  .field label{display:block;margin-bottom:7px;color:var(--muted);font-size:14px}
+  input[type="text"],input[type="file"],select{
+    width:100%;padding:13px;border-radius:15px;border:1px solid rgba(255,255,255,.16);
+    background:rgba(255,255,255,.08);color:white;
+  }
+  select option{color:#111}
+  .analyzeStatus{min-height:44px;color:var(--muted);font-size:14px;line-height:1.45;margin-top:12px}
+  .progressOuter{height:8px;background:rgba(255,255,255,.09);border-radius:999px;overflow:hidden;margin-top:10px}
+  .progressInner{height:100%;width:0%;background:linear-gradient(90deg,#ff5f9e,#6cc8ff);transition:.25s width}
+  .exitBtn{
+    position:fixed;right:18px;bottom:18px;background:#e63946;font-weight:900;display:none;z-index:80;
+  }
+  .exitBtn.show{display:block}
+  .listPanel,.settingsPanel{
+    position:absolute;left:50%;top:100px;transform:translateX(-50%);
+    width:min(92vw,620px);max-height:72vh;overflow:auto;
+    padding:20px;border-radius:24px;background:rgba(16,16,27,.88);
+    border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(16px);
+    display:none;
+  }
+  .listPanel.show,.settingsPanel.show{display:block}
+  .gameItem{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:14px;margin:10px 0;border-radius:18px;background:rgba(255,255,255,.08);
+  }
+  .gameItem .name{font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .gameItem .meta{font-size:12px;color:var(--muted);margin-top:3px}
+  .gameItem .actions{display:flex;gap:8px;flex-shrink:0}
+  .gameItem button{padding:10px 12px;border-radius:13px}
+  .toast{
+    position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.94);
+    padding:18px 26px;border-radius:22px;background:rgba(0,0,0,.75);
+    color:white;font-size:24px;font-weight:900;opacity:0;pointer-events:none;z-index:100;
+    transition:.25s;
+  }
+  .toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  #game{background:#060612}
+  .hud{
+    position:absolute;left:0;right:0;top:0;height:78px;padding:12px 16px;
+    display:flex;align-items:center;justify-content:space-between;z-index:20;
+    background:linear-gradient(rgba(0,0,0,.55),transparent);
+  }
+  .hudTitle{font-weight:900}
+  .hudSub{color:var(--muted);font-size:13px}
+  .score{font-weight:900;font-size:20px;text-align:right}
+  .laneWrap{
+    position:absolute;left:50%;top:82px;bottom:128px;transform:translateX(-50%);
+    width:min(96vw,620px);display:grid;grid-template-columns:repeat(4,1fr);gap:8px;
+  }
+  .lane{
+    position:relative;border-radius:22px;background:rgba(255,255,255,.045);
+    border:1px solid rgba(255,255,255,.09);overflow:hidden;
+  }
+  .hitLine{
+    position:absolute;left:50%;bottom:112px;transform:translateX(-50%);
+    width:min(96vw,620px);height:4px;background:rgba(255,255,255,.75);
+    border-radius:99px;box-shadow:0 0 20px rgba(255,255,255,.45);z-index:15;
+  }
+  .note{
+    position:absolute;left:50%;transform:translateX(-50%);
+    width:58px;height:58px;border-radius:999px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:32px;font-weight:900;
+    background:rgba(255,255,255,.16);
+    border:2px solid rgba(255,255,255,.35);
+    box-shadow:0 8px 20px rgba(0,0,0,.35);
+    z-index:10;
+  }
+  .note.long{
+    border-radius:999px 999px 28px 28px;
+    align-items:flex-start;padding-top:8px;
+  }
+  .note.vocal{box-shadow:0 0 25px rgba(255,95,158,.35)}
+  .note.kick{box-shadow:0 0 25px rgba(255,209,102,.34)}
+  .note.event{box-shadow:0 0 25px rgba(108,200,255,.34)}
+  .controls{
+    position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+    width:min(96vw,620px);display:grid;grid-template-columns:repeat(4,1fr);gap:8px;z-index:30;
+  }
+  .pad{
+    height:84px;border-radius:24px;font-size:38px;background:rgba(255,255,255,.13);
+    border:1px solid rgba(255,255,255,.18);
+  }
+  .pad.active{background:rgba(255,255,255,.28);transform:scale(.97)}
+  .judge{
+    position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);
+    font-size:34px;font-weight:1000;text-shadow:0 8px 25px rgba(0,0,0,.5);
+    opacity:0;transition:.15s;z-index:35;
+  }
+  .judge.show{opacity:1;transform:translate(-50%,-58%)}
+  .legend{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;font-size:12px;color:var(--muted)
+  }
+  .legend div{background:rgba(255,255,255,.06);padding:9px;border-radius:12px}
+  @media(max-width:520px){
+    .entered .title{font-size:22px}
+    .menu{top:92px}
+    .maker.show{top:78px}
+    .pad{height:76px;font-size:34px}
+    .laneWrap{top:76px;bottom:116px}
+    .hitLine{bottom:101px}
+  }
+</style>
+</head>
+<body>
+<div class="version">ver2.0</div>
+
+<section id="home" class="screen active">
+  <div class="title">셀-프 리듬게임</div>
+  <button class="startBtn" id="startHome">시작</button>
+
+  <div class="menu" id="menu">
+    <button id="openMaker">게임 제작</button>
+    <button id="openList">게임 목록</button>
+    <button id="openSettings">설정</button>
+  </div>
+
+  <div class="maker" id="maker">
+    <h2>게임 제작</h2>
+    <div class="field">
+      <label>게임 제목</label>
+      <input id="gameTitle" type="text" placeholder="예: 내 리듬게임" />
+    </div>
+    <div class="field">
+      <label>MP3 파일 업로드</label>
+      <input id="mp3Input" type="file" accept="audio/*" />
+    </div>
+    <div class="field">
+      <label>난이도</label>
+      <select id="difficulty">
+        <option value="easy">하</option>
+        <option value="normal" selected>중</option>
+        <option value="hard">상</option>
+      </select>
+    </div>
+    <button id="createGame">제작 시작</button>
+    <div class="progressOuter"><div class="progressInner" id="progressBar"></div></div>
+    <div class="analyzeStatus" id="analyzeStatus">
+      진행사항 2: 보컬 구간, 킥, 의미 있는 소리를 분석해 노트를 만듭니다.
+    </div>
+    <div class="legend">
+      <div>❤️ 보컬/롱노트</div>
+      <div>♦️ 킥</div>
+      <div>♠️♣️ 악기 이벤트</div>
+    </div>
+  </div>
+
+  <div class="listPanel" id="listPanel">
+    <h2>게임 목록</h2>
+    <div id="gameList"></div>
+  </div>
+
+  <div class="settingsPanel" id="settingsPanel">
+    <h2>설정</h2>
+    <div class="field">
+      <label>볼륨</label>
+      <input id="volumeRange" type="range" min="0" max="1" step="0.01" value="0.85" />
+    </div>
+    <div class="field">
+      <label>기본 생성 난이도</label>
+      <select id="defaultDifficulty">
+        <option value="easy">하</option>
+        <option value="normal" selected>중</option>
+        <option value="hard">상</option>
+      </select>
+    </div>
+  </div>
+</section>
+
+<section id="game" class="screen">
+  <div class="hud">
+    <div>
+      <div class="hudTitle" id="playTitle">게임</div>
+      <div class="hudSub" id="playInfo">보컬 + 킥 + 이벤트 채보</div>
+    </div>
+    <div class="score">
+      <div id="scoreText">0</div>
+      <div class="hudSub" id="comboText">COMBO 0</div>
+    </div>
+  </div>
+  <div class="laneWrap" id="laneWrap">
+    <div class="lane" data-lane="0"></div>
+    <div class="lane" data-lane="1"></div>
+    <div class="lane" data-lane="2"></div>
+    <div class="lane" data-lane="3"></div>
+  </div>
+  <div class="hitLine"></div>
+  <div class="judge" id="judge">PERFECT</div>
+  <div class="controls">
+    <button class="pad" data-lane="0">❤️</button>
+    <button class="pad" data-lane="1">♠️</button>
+    <button class="pad" data-lane="2">♦️</button>
+    <button class="pad" data-lane="3">♣️</button>
+  </div>
+</section>
+
+<button class="exitBtn" id="exitBtn">나가기</button>
+<div class="toast" id="toast">제작 완성됨!</div>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+  const home = $('#home');
+  const gameScreen = $('#game');
+  const menu = $('#menu');
+  const maker = $('#maker');
+  const listPanel = $('#listPanel');
+  const settingsPanel = $('#settingsPanel');
+  const exitBtn = $('#exitBtn');
+  const toast = $('#toast');
+  const progressBar = $('#progressBar');
+  const analyzeStatus = $('#analyzeStatus');
+
+  const STORAGE_KEY = 'selfRhythmGames_ver2';
+  const AUDIO_KEY_PREFIX = 'selfRhythmAudio_';
+  const symbols = ['❤️','♠️','♦️','♣️'];
+
+  let audioCtx = null;
+  let currentAudio = null;
+  let currentGame = null;
+  let activeNotes = [];
+  let rafId = null;
+  let startTime = 0;
+  let score = 0;
+  let combo = 0;
+  let volume = 0.85;
+
+  const settings = JSON.parse(localStorage.getItem('selfRhythmSettings_ver2') || '{}');
+  if (settings.volume != null) {
+    volume = settings.volume;
+    $('#volumeRange').value = volume;
+  }
+  if (settings.difficulty) {
+    $('#defaultDifficulty').value = settings.difficulty;
+    $('#difficulty').value = settings.difficulty;
+  }
+
+  $('#startHome').addEventListener('click', () => {
+    home.classList.add('entered');
+  });
+
+  $('#openMaker').addEventListener('click', () => {
+    closePanels();
+    menu.classList.add('hide');
+    maker.classList.add('show');
+    exitBtn.classList.add('show');
+  });
+
+  $('#openList').addEventListener('click', () => {
+    closePanels();
+    renderList();
+    listPanel.classList.add('show');
+    exitBtn.classList.add('show');
+  });
+
+  $('#openSettings').addEventListener('click', () => {
+    closePanels();
+    settingsPanel.classList.add('show');
+    exitBtn.classList.add('show');
+  });
+
+  exitBtn.addEventListener('click', () => {
+    if (gameScreen.classList.contains('active')) stopGame();
+    gameScreen.classList.remove('active');
+    home.classList.add('active');
+    home.classList.add('entered');
+    closePanels();
+    menu.classList.remove('hide');
+    exitBtn.classList.remove('show');
+  });
+
+  $('#volumeRange').addEventListener('input', e => {
+    volume = Number(e.target.value);
+    saveSettings();
+    if (currentAudio) currentAudio.volume = volume;
+  });
+
+  $('#defaultDifficulty').addEventListener('change', e => {
+    $('#difficulty').value = e.target.value;
+    saveSettings();
+  });
+
+  function saveSettings(){
+    localStorage.setItem('selfRhythmSettings_ver2', JSON.stringify({
+      volume: Number($('#volumeRange').value),
+      difficulty: $('#defaultDifficulty').value
+    }));
+  }
+
+  function closePanels(){
+    maker.classList.remove('show');
+    listPanel.classList.remove('show');
+    settingsPanel.classList.remove('show');
+  }
+
+  function showToast(text){
+    toast.textContent = text;
+    toast.classList.add('show');
+    setTimeout(()=>toast.classList.remove('show'), 1800);
+  }
+
+  function setStatus(text, pct){
+    analyzeStatus.textContent = text;
+    progressBar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  }
+
+  function getGames(){
+    try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]')}
+    catch(e){return []}
+  }
+
+  function saveGames(games){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(games));
+  }
+
+  function uid(){
+    return 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+  }
+
+  async function fileToDataUrl(file){
+    return await new Promise((resolve,reject)=>{
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+  }
+
+  async function decodeAudioFile(file){
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = await file.arrayBuffer();
+    return await audioCtx.decodeAudioData(buf.slice(0));
+  }
+
+  $('#createGame').addEventListener('click', async () => {
+    const file = $('#mp3Input').files[0];
+    const title = ($('#gameTitle').value || '').trim() || '이름 없는 게임';
+    const difficulty = $('#difficulty').value;
+
+    if(!file){
+      setStatus('MP3 파일을 먼저 넣어줘.', 0);
+      return;
+    }
+
+    try{
+      $('#createGame').disabled = true;
+      setStatus('MP3를 읽는 중...', 8);
+      const audioBuffer = await decodeAudioFile(file);
+
+      setStatus('진행사항 2 분석 중: 보컬 구간을 찾는 중...', 22);
+      await waitFrame();
+
+      const notes = analyzeMusic(audioBuffer, difficulty, (msg,p)=>setStatus(msg,p));
+
+      setStatus('오디오 저장 중...', 88);
+      const id = uid();
+      const dataUrl = await fileToDataUrl(file);
+      try{
+        localStorage.setItem(AUDIO_KEY_PREFIX + id, dataUrl);
+      }catch(e){
+        throw new Error('오디오 파일이 커서 브라우저 저장공간에 저장하지 못했어. 더 짧은 MP3로 테스트해줘.');
+      }
+
+      const game = {
+        id, title, difficulty,
+        createdAt: Date.now(),
+        duration: audioBuffer.duration,
+        noteCount: notes.length,
+        notes
+      };
+      const games = getGames();
+      games.unshift(game);
+      saveGames(games);
+
+      setStatus(`제작 완료! 노트 ${notes.length}개 생성됨`, 100);
+      showToast('제작 완성됨!');
+      renderList();
+
+    }catch(err){
+      console.error(err);
+      setStatus('제작 실패: ' + (err.message || err), 0);
+    }finally{
+      $('#createGame').disabled = false;
+    }
+  });
+
+  function waitFrame(){
+    return new Promise(resolve=>requestAnimationFrame(resolve));
+  }
+
+  function analyzeMusic(buffer, difficulty, progress){
+    const sampleRate = buffer.sampleRate;
+    const raw = mixToMono(buffer);
+    const frameSize = Math.round(sampleRate * 0.046);
+    const hop = Math.round(sampleRate * 0.023);
+    const frames = [];
+
+    const diffCfg = {
+      easy:   {minGap:.42, vocalMin:.18, eventMinGap:.52, keep:0.52, longMin:.9},
+      normal: {minGap:.29, vocalMin:.14, eventMinGap:.38, keep:0.72, longMin:.72},
+      hard:   {minGap:.18, vocalMin:.10, eventMinGap:.25, keep:0.92, longMin:.55}
+    }[difficulty] || {minGap:.29, vocalMin:.14, eventMinGap:.38, keep:.72, longMin:.72};
+
+    progress('전체 음원을 짧은 조각으로 나누는 중...', 30);
+
+    for(let start=0, idx=0; start + frameSize < raw.length; start += hop, idx++){
+      const t = start / sampleRate;
+      let total = 0, low = 0, mid = 0, high = 0, zc = 0;
+      let prev = raw[start];
+
+      for(let i=0;i<frameSize;i++){
+        const v = raw[start+i];
+        total += v*v;
+        if ((prev <= 0 && v > 0) || (prev >= 0 && v < 0)) zc++;
+        prev = v;
+      }
+
+      // 가벼운 주파수 성격 추정: 정확한 FFT 대신 필터 느낌의 차분 에너지 사용
+      // low: 천천히 변하는 파형, mid/high: 변화량 기반
+      let slow = 0, fast = 0, last = raw[start];
+      for(let i=2;i<frameSize;i+=2){
+        const v = raw[start+i];
+        const d = v - last;
+        fast += d*d;
+        slow += ((v + last) * .5) ** 2;
+        last = v;
+      }
+
+      low = slow / (frameSize/2);
+      high = fast / (frameSize/2);
+      total = total / frameSize;
+
+      // 보컬스러움: 전체 에너지가 있고, 킥처럼 너무 저음 위주도 아니며, 너무 심벌처럼 고주파만 크지도 않은 구간
+      const zcr = zc / frameSize;
+      const vocalScore = total * clamp(1 - Math.abs(zcr - 0.065) * 8, 0, 1.3) * clamp((high / (low + 1e-7)) * .9, .25, 1.25);
+      const kickScore = low * clamp((low / (high + 1e-7)) * .4, .2, 2.2);
+      const eventScore = Math.max(0, total * .55 + high * 1.1);
+
+      frames.push({t,total,low,high,zcr,vocalScore,kickScore,eventScore});
+    }
+
+    progress('킥과 보컬 후보를 분리하는 중...', 46);
+
+    smoothField(frames,'vocalScore',5);
+    smoothField(frames,'kickScore',3);
+    smoothField(frames,'eventScore',3);
+
+    const vocalThreshold = percentile(frames.map(f=>f.vocalScoreSm), 73);
+    const kickThreshold = percentile(frames.map(f=>f.kickScoreSm), 84);
+    const eventThreshold = percentile(frames.map(f=>f.eventScoreSm), 88);
+
+    const vocalSegments = detectVocalSegments(frames, vocalThreshold, diffCfg);
+    progress(`보컬 구간 ${vocalSegments.length}개 발견. 롱노트 변환 중...`, 58);
+
+    const vocalNotes = [];
+    for(const seg of vocalSegments){
+      const dur = seg.end - seg.start;
+      if(dur >= diffCfg.longMin){
+        vocalNotes.push({
+          time: seg.start,
+          lane: 0,
+          type:'vocal',
+          long:true,
+          duration: Math.min(dur, 3.2),
+          symbol:'❤️'
+        });
+      }else{
+        vocalNotes.push({
+          time: seg.start + dur * .35,
+          lane: 0,
+          type:'vocal',
+          long:false,
+          duration:0,
+          symbol:'❤️'
+        });
+      }
+    }
+
+    progress('킥 노트를 생성하는 중...', 68);
+    const kickNotes = detectPeaks(frames, 'kickScoreSm', kickThreshold, .20)
+      .map(p => ({time:p.t, lane:2, type:'kick', long:false, duration:0, symbol:'♦️', power:p.value}));
+
+    progress('의미 있는 악기/효과음 노트를 생성하는 중...', 76);
+    const eventNotes = detectPeaks(frames, 'eventScoreSm', eventThreshold, diffCfg.eventMinGap)
+      .map((p,i) => ({
+        time:p.t,
+        lane:i%2 ? 3 : 1,
+        type:'event',
+        long:false,
+        duration:0,
+        symbol:i%2 ? '♣️' : '♠️',
+        power:p.value
+      }));
+
+    progress('세 종류의 노트를 합치는 중...', 82);
+    let notes = mergeNotes([...vocalNotes, ...kickNotes, ...eventNotes], diffCfg.minGap);
+
+    notes = notes
+      .filter((n,i)=> i % Math.round(1 / diffCfg.keep) === 0 || n.type === 'vocal' || difficulty === 'hard')
+      .sort((a,b)=>a.time-b.time)
+      .map((n,i)=> {
+        // 같은 라인이 너무 반복되면 보정
+        if(i>0 && notes[i-1] && notes[i-1].lane === n.lane && !n.long){
+          if(n.type === 'kick') n.lane = 2;
+          else n.lane = (n.lane + 1) % 4;
+          n.symbol = symbols[n.lane];
+        }
+        return {
+          time: round(n.time,3),
+          lane:n.lane,
+          type:n.type,
+          long:!!n.long,
+          duration: round(n.duration || 0,3),
+          symbol:n.symbol || symbols[n.lane],
+          hit:false,
+          missed:false
+        };
+      });
+
+    if(notes.length < 12){
+      // 너무 조용한 음원용 안전망
+      notes = fallbackNotes(buffer.duration, difficulty);
+    }
+
+    return notes;
+  }
+
+  function mixToMono(buffer){
+    const len = buffer.length;
+    const chs = buffer.numberOfChannels;
+    const out = new Float32Array(len);
+    for(let c=0;c<chs;c++){
+      const data = buffer.getChannelData(c);
+      for(let i=0;i<len;i++) out[i] += data[i] / chs;
+    }
+    return out;
+  }
+
+  function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
+  function round(v,d){const m=10**d;return Math.round(v*m)/m}
+
+  function smoothField(frames, field, radius){
+    const out = [];
+    for(let i=0;i<frames.length;i++){
+      let sum=0,c=0;
+      for(let j=-radius;j<=radius;j++){
+        const f=frames[i+j];
+        if(f){sum += f[field]; c++}
+      }
+      out[i] = sum / c;
+    }
+    frames.forEach((f,i)=>f[field+'Sm']=out[i]);
+  }
+
+  function percentile(arr, p){
+    const a = arr.filter(Number.isFinite).sort((x,y)=>x-y);
+    if(!a.length) return 0;
+    const idx = Math.floor((p/100)*(a.length-1));
+    return a[idx];
+  }
+
+  function detectVocalSegments(frames, threshold, cfg){
+    const segs = [];
+    let inSeg = false, start = 0, lastActive = 0;
+    const minSilence = .16;
+
+    for(const f of frames){
+      const active = f.vocalScoreSm > threshold && f.total > 0.000015;
+      if(active && !inSeg){
+        inSeg = true; start = f.t;
+      }
+      if(active) lastActive = f.t;
+      if(inSeg && !active && f.t - lastActive > minSilence){
+        const end = lastActive;
+        if(end - start >= cfg.vocalMin) segs.push({start,end});
+        inSeg = false;
+      }
+    }
+    if(inSeg){
+      const end = frames[frames.length-1].t;
+      if(end - start >= cfg.vocalMin) segs.push({start,end});
+    }
+
+    // 너무 가까운 보컬 구간 병합
+    const merged = [];
+    for(const s of segs){
+      const prev = merged[merged.length-1];
+      if(prev && s.start - prev.end < .22){
+        prev.end = s.end;
+      }else merged.push({...s});
+    }
+    return merged;
+  }
+
+  function detectPeaks(frames, field, threshold, minGap){
+    const peaks = [];
+    let lastT = -999;
+    for(let i=1;i<frames.length-1;i++){
+      const a = frames[i-1][field], b = frames[i][field], c = frames[i+1][field];
+      if(b > threshold && b > a * 1.08 && b >= c && frames[i].t - lastT >= minGap){
+        peaks.push({t:frames[i].t, value:b});
+        lastT = frames[i].t;
+      }
+    }
+    return peaks;
+  }
+
+  function priority(type){
+    if(type === 'vocal') return 3;
+    if(type === 'kick') return 2;
+    return 1;
+  }
+
+  function mergeNotes(notes, minGap){
+    notes.sort((a,b)=>a.time-b.time || priority(b.type)-priority(a.type));
+    const out = [];
+    for(const n of notes){
+      const near = out.find(o => Math.abs(o.time - n.time) < minGap);
+      if(!near){
+        out.push({...n});
+      }else if(priority(n.type) > priority(near.type)){
+        Object.assign(near, n);
+      }else if(n.type !== near.type && Math.abs(n.time - near.time) > minGap * .55){
+        out.push({...n, time:n.time + minGap*.35});
+      }
+    }
+    return out.sort((a,b)=>a.time-b.time);
+  }
+
+  function fallbackNotes(duration, difficulty){
+    const gap = difficulty === 'hard' ? .32 : difficulty === 'easy' ? .62 : .45;
+    const arr = [];
+    for(let t=1, i=0;t<duration-1;t+=gap,i++){
+      const lane = i%4;
+      arr.push({time:round(t,3), lane, type:'event', long:false, duration:0, symbol:symbols[lane], hit:false, missed:false});
+    }
+    return arr;
+  }
+
+  function renderList(){
+    const box = $('#gameList');
+    const games = getGames();
+    if(!games.length){
+      box.innerHTML = '<p style="color:var(--muted)">아직 만든 게임이 없습니다.</p>';
+      return;
+    }
+    box.innerHTML = '';
+    games.forEach(g=>{
+      const item = document.createElement('div');
+      item.className = 'gameItem';
+      item.innerHTML = `
+        <div>
+          <div class="name">${escapeHtml(g.title)}</div>
+          <div class="meta">${g.noteCount||0} notes · ${Math.round(g.duration||0)}초 · ${labelDifficulty(g.difficulty)}</div>
+        </div>
+        <div class="actions">
+          <button data-play="${g.id}">플레이</button>
+          <button data-del="${g.id}" style="background:#d62828">삭제</button>
+        </div>
+      `;
+      box.appendChild(item);
+    });
+
+    box.querySelectorAll('[data-play]').forEach(btn=>{
+      btn.addEventListener('click',()=>playGame(btn.dataset.play));
+    });
+    box.querySelectorAll('[data-del]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const id = btn.dataset.del;
+        saveGames(getGames().filter(g=>g.id!==id));
+        localStorage.removeItem(AUDIO_KEY_PREFIX+id);
+        renderList();
+      });
+    });
+  }
+
+  function labelDifficulty(d){
+    return d==='easy'?'하':d==='hard'?'상':'중';
+  }
+
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+  }
+
+  function playGame(id){
+    const game = getGames().find(g=>g.id===id);
+    const audioData = localStorage.getItem(AUDIO_KEY_PREFIX+id);
+    if(!game || !audioData){
+      showToast('오디오를 찾을 수 없음');
+      return;
+    }
+    stopGame();
+
+    currentGame = JSON.parse(JSON.stringify(game));
+    activeNotes = currentGame.notes.map((n,idx)=>({...n, idx, el:null, hit:false, missed:false}));
+    score = 0; combo = 0;
+    updateScore();
+
+    $('#playTitle').textContent = currentGame.title;
+    $('#playInfo').textContent = `보컬/킥/이벤트 · ${currentGame.noteCount} notes`;
+
+    home.classList.remove('active');
+    gameScreen.classList.add('active');
+    exitBtn.classList.add('show');
+
+    currentAudio = new Audio(audioData);
+    currentAudio.volume = volume;
+    currentAudio.preload = 'auto';
+
+    buildNoteElements();
+
+    currentAudio.addEventListener('canplay', () => {
+      startTime = performance.now()/1000 + 0.05;
+      currentAudio.play().catch(()=>showToast('재생을 다시 눌러줘'));
+      loop();
+    }, {once:true});
+
+    currentAudio.addEventListener('ended', () => {
+      showJudge('완료!');
+      setTimeout(()=>exitBtn.click(), 1200);
+    }, {once:true});
+  }
+
+  function buildNoteElements(){
+    $$('.lane').forEach(l=>l.innerHTML='');
+    const lanes = $$('.lane');
+    for(const n of activeNotes){
+      const el = document.createElement('div');
+      el.className = `note ${n.long?'long':''} ${n.type}`;
+      el.textContent = n.symbol;
+      if(n.long){
+        el.style.height = Math.max(80, 58 + n.duration * 120) + 'px';
+      }
+      lanes[n.lane].appendChild(el);
+      n.el = el;
+    }
+  }
+
+  function loop(){
+    const now = performance.now()/1000;
+    const songTime = currentAudio ? currentAudio.currentTime : (now-startTime);
+    const travel = 2.05;
+    const laneHeight = $('.lane').clientHeight;
+    const hitY = laneHeight - 32;
+
+    for(const n of activeNotes){
+      if(!n.el) continue;
+      if(n.hit || n.missed){
+        n.el.style.display = 'none';
+        continue;
+      }
+      const y = hitY - (n.time - songTime) / travel * laneHeight;
+      n.el.style.top = y + 'px';
+
+      if(songTime - n.time > .22){
+        n.missed = true;
+        combo = 0;
+        updateScore();
+        showJudge('MISS');
+      }
+    }
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function stopGame(){
+    if(rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    if(currentAudio){
+      currentAudio.pause();
+      currentAudio.src = '';
+      currentAudio = null;
+    }
+    activeNotes = [];
+    $$('.lane').forEach(l=>l.innerHTML='');
+  }
+
+  function hitLane(lane){
+    const songTime = currentAudio ? currentAudio.currentTime : 0;
+    const candidates = activeNotes
+      .filter(n=>!n.hit && !n.missed && n.lane===lane)
+      .map(n=>({...n, diff:Math.abs(n.time-songTime)}))
+      .sort((a,b)=>a.diff-b.diff);
+
+    if(!candidates.length) return;
+
+    const n = activeNotes.find(x=>x.idx===candidates[0].idx);
+    const diff = Math.abs(n.time-songTime);
+    if(diff <= .075){
+      applyHit(n, 1000, 'PERFECT');
+    }else if(diff <= .14){
+      applyHit(n, 650, 'GOOD');
+    }else if(diff <= .22){
+      applyHit(n, 300, 'OK');
+    }
+  }
+
+  function applyHit(n, points, text){
+    n.hit = true;
+    combo++;
+    score += points + combo * 7;
+    updateScore();
+    showJudge(text);
+    const pad = $(`.pad[data-lane="${n.lane}"]`);
+    pad.classList.add('active');
+    setTimeout(()=>pad.classList.remove('active'),110);
+  }
+
+  function updateScore(){
+    $('#scoreText').textContent = String(score);
+    $('#comboText').textContent = 'COMBO ' + combo;
+  }
+
+  let judgeTimer = null;
+  function showJudge(text){
+    const j = $('#judge');
+    j.textContent = text;
+    j.classList.add('show');
+    clearTimeout(judgeTimer);
+    judgeTimer = setTimeout(()=>j.classList.remove('show'), 250);
+  }
+
+  $$('.pad').forEach(p=>{
+    p.addEventListener('pointerdown', e=>{
+      e.preventDefault();
+      hitLane(Number(p.dataset.lane));
+    });
+  });
+
+  window.addEventListener('keydown', e=>{
+    const map = {'d':0,'f':1,'j':2,'k':3,'ArrowLeft':0,'ArrowDown':1,'ArrowUp':2,'ArrowRight':3};
+    if(map[e.key] != null) hitLane(map[e.key]);
+  });
+
+  // 예시 게임 생성: 외부 파일 없이 간단한 내장 음원 생성
+  function createExampleGame(){
+    if(getGames().some(g=>g.id==='example_ver2')) return;
+    const duration = 18;
+    const notes = [];
+    for(let t=1, i=0;t<duration-1;t+=.5,i++){
+      const lane = i%4;
+      notes.push({time:round(t,3), lane, type:i%4===0?'kick':'event', long:false, duration:0, symbol:symbols[lane], hit:false, missed:false});
+    }
+    notes.push({time:3.2,lane:0,type:'vocal',long:true,duration:1.4,symbol:'❤️',hit:false,missed:false});
+    notes.push({time:8.1,lane:0,type:'vocal',long:true,duration:1.8,symbol:'❤️',hit:false,missed:false});
+    const game = {id:'example_ver2',title:'예시용 연습 게임',difficulty:'normal',createdAt:Date.now(),duration,noteCount:notes.length,notes};
+    saveGames([game, ...getGames()]);
+    localStorage.setItem(AUDIO_KEY_PREFIX+'example_ver2', makeExampleAudioDataUrl(duration));
+  }
+
+  function makeExampleAudioDataUrl(duration){
+    const sr = 22050;
+    const len = sr * duration;
+    const data = new Int16Array(len);
+    for(let i=0;i<len;i++){
+      const t = i/sr;
+      let v = 0.05*Math.sin(2*Math.PI*440*t);
+      if(Math.abs((t*2)%1) < .055) v += 0.45*Math.sin(2*Math.PI*80*t)*Math.exp(-((t*2)%1)*16);
+      if((t>3.2&&t<4.6)||(t>8.1&&t<9.9)) v += 0.22*Math.sin(2*Math.PI*(260+40*Math.sin(t*5))*t);
+      data[i] = Math.max(-1,Math.min(1,v)) * 32767;
+    }
+    const wav = encodeWav(data, sr);
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(wav)));
+    return 'data:audio/wav;base64,' + b64;
+  }
+
+  function encodeWav(samples, sampleRate){
+    const buffer = new ArrayBuffer(44 + samples.length*2);
+    const view = new DataView(buffer);
+    writeStr(view,0,'RIFF');
+    view.setUint32(4,36+samples.length*2,true);
+    writeStr(view,8,'WAVE');
+    writeStr(view,12,'fmt ');
+    view.setUint32(16,16,true);
+    view.setUint16(20,1,true);
+    view.setUint16(22,1,true);
+    view.setUint32(24,sampleRate,true);
+    view.setUint32(28,sampleRate*2,true);
+    view.setUint16(32,2,true);
+    view.setUint16(34,16,true);
+    writeStr(view,36,'data');
+    view.setUint32(40,samples.length*2,true);
+    let off=44;
+    for(let i=0;i<samples.length;i++,off+=2) view.setInt16(off,samples[i],true);
+    return buffer;
+  }
+
+  function writeStr(view, offset, str){
+    for(let i=0;i<str.length;i++) view.setUint8(offset+i,str.charCodeAt(i));
+  }
+
+  createExampleGame();
+  renderList();
+})();
+</script>
+</body>
+</html>
