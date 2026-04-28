@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>셀-프 리듬게임 ver2.9</title>
+<title>셀-프 리듬게임 ver2.9.1</title>
 <style>
   :root{
     --bg:#07070c;
@@ -276,7 +276,7 @@
 </style>
 </head>
 <body>
-<div class="version">ver2.9</div>
+<div class="version">ver2.9.1</div>
 
 <section id="home" class="screen active">
   <div class="title">셀-프 리듬게임</div>
@@ -295,8 +295,8 @@
       <input id="gameTitle" type="text" placeholder="예: 내 리듬게임" />
     </div>
     <div class="field">
-      <label>MP3 파일 업로드</label>
-      <input id="mp3Input" type="file" accept="audio/*" />
+      <label>음악 파일 업로드 <span style="color:var(--muted);font-size:12px">(.mp3 / .m4a / .wav)</span></label>
+      <input id="mp3Input" type="file" accept=".mp3,.m4a,.wav,.aac,audio/mpeg,audio/mp3,audio/mp4,audio/aac,audio/wav,audio/*" />
     </div>
     <div class="field">
       <label>난이도 <span style="color:var(--muted);font-size:12px">(3 = 현재 기준, 5 = 최고난도, 6 = 무작위)</span></label>
@@ -312,7 +312,7 @@
 <button id="createGame">제작 시작</button>
     <div class="progressOuter"><div class="progressInner" id="progressBar"></div></div>
     <div class="analyzeStatus" id="analyzeStatus">
-      진행사항 2.9: 난이도 6 무작위 배열과 결과 화면/최고점수 기록을 추가했습니다.
+      진행사항 2.9.1: iOS에서 MP3 파일 선택이 가능하도록 파일 입력 방식을 수정했습니다.
     </div>
     <div class="legend">
       <div>❤️ 멜로디</div>
