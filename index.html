@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>셀-프 리듬게임 ver2.7</title>
+<title>셀-프 리듬게임 ver2.8</title>
 <style>
   :root{
     --bg:#07070c;
@@ -228,6 +228,16 @@
     transition:.18s ease;
   }
   .countdown.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  .difficultyBtns{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+  .diffBtn{
+    padding:12px 0;border-radius:14px;background:rgba(255,255,255,.08);
+    font-weight:1000;color:rgba(255,255,255,.74);
+    box-shadow:none;border:1px solid rgba(255,255,255,.12);
+  }
+  .diffBtn.active{
+    background:linear-gradient(135deg,#ff5f9e,#7c5cff);
+    color:white;box-shadow:0 10px 28px rgba(255,95,158,.25);
+  }
   .legend{
     display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;font-size:12px;color:var(--muted)
   }
@@ -246,7 +256,7 @@
 </style>
 </head>
 <body>
-<div class="version">ver2.7</div>
+<div class="version">ver2.8</div>
 
 <section id="home" class="screen active">
   <div class="title">셀-프 리듬게임</div>
@@ -268,10 +278,20 @@
       <label>MP3 파일 업로드</label>
       <input id="mp3Input" type="file" accept="audio/*" />
     </div>
+    <div class="field">
+      <label>난이도 <span style="color:var(--muted);font-size:12px">(3 = 현재 기준, 5 = 최고난도)</span></label>
+      <div class="difficultyBtns" id="difficultyBtns">
+        <button type="button" class="diffBtn" data-diff="1">1</button>
+        <button type="button" class="diffBtn" data-diff="2">2</button>
+        <button type="button" class="diffBtn active" data-diff="3">3</button>
+        <button type="button" class="diffBtn" data-diff="4">4</button>
+        <button type="button" class="diffBtn" data-diff="5">5</button>
+      </div>
+    </div>
 <button id="createGame">제작 시작</button>
     <div class="progressOuter"><div class="progressInner" id="progressBar"></div></div>
     <div class="analyzeStatus" id="analyzeStatus">
-      진행사항 2.7: 멜로디 비중을 높이고 반복 키를 줄이며, 시작 전 3초 카운트다운을 추가합니다.
+      진행사항 2.8: 난이도 1~5단계를 적용하고, 5단계는 빠른 멜로디를 적극적으로 노트화합니다.
     </div>
     <div class="legend">
       <div>❤️ 멜로디</div>
@@ -357,6 +377,7 @@
   let score = 0;
   let combo = 0;
   let volume = 0.85;
+  let selectedDifficulty = 3;
 
   const settings = JSON.parse(localStorage.getItem('selfRhythmSettings_ver2') || '{}');
   if (settings.volume != null) {
@@ -470,7 +491,7 @@ function saveSettings(){
       setStatus('진행사항 2 분석 중: 보컬 구간을 찾는 중...', 22);
       await waitFrame();
 
-      const notes = analyzeMusic(audioBuffer, (msg,p)=>setStatus(msg,p));
+      const notes = analyzeMusic(audioBuffer, selectedDifficulty, (msg,p)=>setStatus(msg,p));
 
       setStatus('오디오 저장 중...', 88);
       const id = uid();
@@ -483,6 +504,7 @@ function saveSettings(){
 
       const game = {
         id, title,
+        difficulty: selectedDifficulty,
         createdAt: Date.now(),
         duration: audioBuffer.duration,
         noteCount: notes.length,
@@ -508,7 +530,7 @@ function saveSettings(){
     return new Promise(resolve=>requestAnimationFrame(resolve));
   }
 
-  function analyzeMusic(buffer, progress){
+  function analyzeMusic(buffer, difficulty, progress){
     const sampleRate = buffer.sampleRate;
     const raw = mixToMono(buffer);
 
@@ -519,20 +541,21 @@ function saveSettings(){
     const frames = [];
 
     const duration = buffer.duration;
-    const targetMin = Math.max(40, Math.floor(duration * 3.5));
-    const targetMax = Math.max(targetMin + 12, Math.floor(duration * 4.55));
+    const diff = getDifficultyConfig(difficulty);
+    const targetMin = Math.max(24, Math.floor(duration * diff.densityMin));
+    const targetMax = Math.max(targetMin + 8, Math.floor(duration * diff.densityMax));
     const targetMid = Math.floor((targetMin + targetMax) / 2);
 
     const cfg = {
-      minGap:.105,
-      sameLaneGap:.135,
-      kickGap:.15,
-      snareGap:.17,
-      melodyGap:.16,
-      hatGap:.095
+      minGap: diff.minGap,
+      sameLaneGap: diff.sameLaneGap,
+      kickGap: diff.kickGap,
+      snareGap: diff.snareGap,
+      melodyGap: diff.melodyGap,
+      hatGap: diff.hatGap
     };
 
-    progress('음원을 소리 종류별로 분해하는 중...', 18);
+    progress(`난이도 ${difficulty}: 음원을 소리 종류별로 분해하는 중...`, 18);
 
     for(let start=0; start + frameSize < raw.length; start += hop){
       const t = start / sampleRate;
@@ -604,8 +627,9 @@ function saveSettings(){
 
       // 멜로디는 베이스에 눌리지 않도록 중역 변화량을 더 크게 반영하고,
       // 베이스 페널티를 약하게 적용한다.
-      const melodyScore = (lowMid * .95 + mid * 1.55 + highMid * .34) *
-        clamp(1 - bass / (body + brightness + 1e-8) * .055, .68, 1.16);
+      const melodyBoost = 1 + Math.max(0, difficulty - 3) * .18;
+      const melodyScore = (lowMid * .95 + mid * 1.55 * melodyBoost + highMid * .34 * melodyBoost) *
+        clamp(1 - bass / (body + brightness + 1e-8) * .045, .72, 1.22);
 
       const hatScore = (high * 1.25 + highMid * .65) *
         clamp(zcr * 8.0, .35, 2.2) *
@@ -634,21 +658,21 @@ function saveSettings(){
 
     progress('소리 종류별 상위 이벤트를 고르는 중...', 54);
 
-    const quota = buildQuotas(duration, targetMid);
+    const quota = buildQuotas(duration, targetMid, diff);
 
-    const kickCandidates = detectPeaks(frames, 'kickFlux', percentile(frames.map(f=>f.kickFlux), 64), cfg.kickGap)
+    const kickCandidates = detectPeaks(frames, 'kickFlux', percentile(frames.map(f=>f.kickFlux), diff.kickPct), cfg.kickGap)
       .filter(p => frames[p.index].total > energyGate * .6)
       .map(p => ({...p, lane:2, type:'kick', symbol:'♦️', weight:p.value * 1.25}));
 
-    const snareCandidates = detectPeaks(frames, 'snareFlux', percentile(frames.map(f=>f.snareFlux), 60), cfg.snareGap)
+    const snareCandidates = detectPeaks(frames, 'snareFlux', percentile(frames.map(f=>f.snareFlux), diff.snarePct), cfg.snareGap)
       .filter(p => frames[p.index].total > energyGate * .55)
       .map(p => ({...p, lane:1, type:'snare', symbol:'♠️', weight:p.value * 1.10}));
 
-    const melodyCandidates = detectPeaks(frames, 'melodyFlux', percentile(frames.map(f=>f.melodyFlux), 48), cfg.melodyGap)
+    const melodyCandidates = detectPeaks(frames, 'melodyFlux', percentile(frames.map(f=>f.melodyFlux), diff.melodyPct), cfg.melodyGap)
       .filter(p => frames[p.index].total > energyGate * .48)
       .map((p,i) => ({...p, lane: chooseMelodyLane(i), type:'melody', symbol:null, weight:p.value}));
 
-    const hatCandidates = detectPeaks(frames, 'hatFlux', percentile(frames.map(f=>f.hatFlux), 58), cfg.hatGap)
+    const hatCandidates = detectPeaks(frames, 'hatFlux', percentile(frames.map(f=>f.hatFlux), diff.hatPct), cfg.hatGap)
       .filter(p => frames[p.index].total > energyGate * .42)
       .map(p => ({...p, lane:3, type:'hat', symbol:'♣️', weight:p.value * .88}));
 
@@ -710,13 +734,53 @@ function saveSettings(){
     return notes;
   }
 
-  function buildQuotas(duration, target){
-    // 44초 곡 기준 대략 150~200개 목표
+  function getDifficultyConfig(level){
+    const table = {
+      1: {
+        densityMin:1.65, densityMax:2.25,
+        minGap:.22, sameLaneGap:.22,
+        kickGap:.28, snareGap:.30, melodyGap:.30, hatGap:.24,
+        kickPct:72, snarePct:72, melodyPct:70, hatPct:76,
+        kickQ:.25, snareQ:.24, melodyQ:.36, hatQ:.15
+      },
+      2: {
+        densityMin:2.45, densityMax:3.20,
+        minGap:.155, sameLaneGap:.18,
+        kickGap:.21, snareGap:.22, melodyGap:.22, hatGap:.16,
+        kickPct:66, snarePct:65, melodyPct:60, hatPct:66,
+        kickQ:.21, snareQ:.21, melodyQ:.40, hatQ:.18
+      },
+      3: {
+        densityMin:3.50, densityMax:4.55,
+        minGap:.105, sameLaneGap:.135,
+        kickGap:.15, snareGap:.17, melodyGap:.16, hatGap:.095,
+        kickPct:64, snarePct:60, melodyPct:48, hatPct:58,
+        kickQ:.17, snareQ:.19, melodyQ:.42, hatQ:.22
+      },
+      4: {
+        densityMin:4.70, densityMax:5.90,
+        minGap:.075, sameLaneGap:.105,
+        kickGap:.12, snareGap:.13, melodyGap:.105, hatGap:.075,
+        kickPct:58, snarePct:55, melodyPct:36, hatPct:48,
+        kickQ:.14, snareQ:.17, melodyQ:.50, hatQ:.19
+      },
+      5: {
+        densityMin:6.10, densityMax:7.40,
+        minGap:.052, sameLaneGap:.085,
+        kickGap:.09, snareGap:.10, melodyGap:.065, hatGap:.055,
+        kickPct:52, snarePct:48, melodyPct:24, hatPct:40,
+        kickQ:.10, snareQ:.14, melodyQ:.62, hatQ:.14
+      }
+    };
+    return table[level] || table[3];
+  }
+
+  function buildQuotas(duration, target, diff){
     return {
-      kick: Math.floor(target * .17),
-      snare: Math.floor(target * .19),
-      melody: Math.floor(target * .42),
-      hat: Math.floor(target * .22)
+      kick: Math.floor(target * diff.kickQ),
+      snare: Math.floor(target * diff.snareQ),
+      melody: Math.floor(target * diff.melodyQ),
+      hat: Math.floor(target * diff.hatQ)
     };
   }
 
@@ -928,7 +992,7 @@ function saveSettings(){
       item.innerHTML = `
         <div>
           <div class="name">${escapeHtml(g.title)}</div>
-          <div class="meta">${g.noteCount||0} notes · ${Math.round(g.duration||0)}초 · 표준 채보</div>
+          <div class="meta">${g.noteCount||0} notes · ${Math.round(g.duration||0)}초 · 난이도 ${g.difficulty || 3}</div>
         </div>
         <div class="actions">
           <button data-play="${g.id}">플레이</button>
@@ -972,7 +1036,7 @@ function escapeHtml(str){
     $('#songProgressText').textContent = '0%';
 
     $('#playTitle').textContent = currentGame.title;
-    $('#playInfo').textContent = `분류형 채보 · 킥/스네어/멜로디/하이햇 · ${currentGame.noteCount} notes`;
+    $('#playInfo').textContent = `난이도 ${currentGame.difficulty || 3} · 킥/스네어/멜로디/하이햇 · ${currentGame.noteCount} notes`;
 
     home.classList.remove('active');
     gameScreen.classList.add('active');
@@ -1172,7 +1236,7 @@ function escapeHtml(str){
     }
     notes.push({time:3.2,lane:0,type:'vocal',long:true,duration:1.4,symbol:'❤️',hit:false,missed:false});
     notes.push({time:8.1,lane:0,type:'vocal',long:true,duration:1.8,symbol:'❤️',hit:false,missed:false});
-    const game = {id:'example_ver2',title:'예시용 연습 게임',createdAt:Date.now(),duration,noteCount:notes.length,notes};
+    const game = {id:'example_ver2',title:'예시용 연습 게임',difficulty:3,createdAt:Date.now(),duration,noteCount:notes.length,notes};
     saveGames([game, ...getGames()]);
     localStorage.setItem(AUDIO_KEY_PREFIX+'example_ver2', makeExampleAudioDataUrl(duration));
   }
