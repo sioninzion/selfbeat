@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>셀-프 리듬게임 ver2.10.1</title>
+<title>셀-프 리듬게임 ver2.11</title>
 <style>
   :root{
     --bg:#07070c;
@@ -276,6 +276,57 @@
   .resultCell b{display:block;font-size:22px;margin-top:4px}
   .bestText{color:var(--muted);font-size:14px;margin:8px 0 18px}
   .backMenuBtn{width:100%;background:linear-gradient(135deg,#ff5f9e,#7c5cff);font-weight:1000}
+
+  .judgementZone{
+    position:absolute;left:50%;bottom:92px;transform:translateX(-50%);
+    width:min(96vw,620px);height:46px;border-radius:18px;z-index:14;
+    background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.13),rgba(255,255,255,.02));
+    border-top:1px solid rgba(255,255,255,.16);
+    border-bottom:1px solid rgba(255,255,255,.16);
+    box-shadow:0 0 34px rgba(255,255,255,.13), inset 0 0 24px rgba(255,255,255,.06);
+    pointer-events:none;
+  }
+  .lane:nth-child(1){background:linear-gradient(180deg,rgba(255,77,77,.045),rgba(255,255,255,.035))}
+  .lane:nth-child(2){background:linear-gradient(180deg,rgba(255,166,77,.045),rgba(255,255,255,.035))}
+  .lane:nth-child(3){background:linear-gradient(180deg,rgba(77,255,136,.045),rgba(255,255,255,.035))}
+  .lane:nth-child(4){background:linear-gradient(180deg,rgba(77,166,255,.045),rgba(255,255,255,.035))}
+  .laneGlow{
+    position:absolute;left:0;right:0;bottom:0;height:120px;opacity:.22;
+    background:linear-gradient(transparent,rgba(255,255,255,.18));pointer-events:none;
+  }
+  .hitBurst{
+    position:absolute;width:88px;height:88px;border-radius:999px;z-index:42;pointer-events:none;
+    transform:translate(-50%,-50%) scale(.25);opacity:0;
+    border:3px solid rgba(255,255,255,.95);
+    box-shadow:0 0 28px rgba(255,255,255,.9), inset 0 0 22px rgba(255,255,255,.35);
+    animation:burstPop .32s ease-out forwards;
+  }
+  @keyframes burstPop{
+    0%{opacity:0;transform:translate(-50%,-50%) scale(.25)}
+    18%{opacity:1}
+    100%{opacity:0;transform:translate(-50%,-50%) scale(1.55)}
+  }
+  .comboPop{
+    position:absolute;left:50%;top:30%;transform:translate(-50%,-50%) scale(.9);
+    z-index:44;text-align:center;opacity:0;pointer-events:none;
+    font-weight:1000;text-shadow:0 8px 28px rgba(0,0,0,.55);
+  }
+  .comboPop.show{animation:comboPop .45s ease-out forwards}
+  .comboPop .num{font-size:clamp(44px,11vw,92px);line-height:.85}
+  .comboPop .label{font-size:15px;letter-spacing:.25em;color:rgba(255,255,255,.82)}
+  @keyframes comboPop{
+    0%{opacity:0;transform:translate(-50%,-42%) scale(.7)}
+    25%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}
+    100%{opacity:0;transform:translate(-50%,-60%) scale(1)}
+  }
+  .screenShake{animation:screenShake .18s linear}
+  @keyframes screenShake{
+    0%,100%{transform:translateX(0)}
+    25%{transform:translateX(-4px)}
+    50%{transform:translateX(4px)}
+    75%{transform:translateX(-2px)}
+  }
+
   @media(max-width:520px){
     .entered .title{font-size:22px}
     .menu{top:92px}
@@ -292,7 +343,7 @@
 </style>
 </head>
 <body>
-<div class="version">ver2.10.1</div>
+<div class="version">ver2.11</div>
 
 <section id="home" class="screen active">
   <div class="title">셀-프 리듬게임</div>
@@ -313,6 +364,9 @@
     <div class="field">
       <label>음악 파일 업로드 <span style="color:var(--muted);font-size:12px">(.mp3 / .m4a / .wav)</span></label>
       <input id="mp3Input" type="file" accept=".mp3,.m4a,.wav,.aac,audio/mpeg,audio/mp3,audio/mp4,audio/aac,audio/wav,audio/*" />
+      <label style="margin-top:14px">노트 속도 (0.5x ~ 3x)</label>
+      <input id="speedRange" type="range" min="0.5" max="3" step="0.1" value="1">
+      <div id="speedValue" style="font-size:12px;color:#aaa">1.0x</div>
     </div>
     <div class="field">
       <label>난이도 <span style="color:var(--muted);font-size:12px">(3 = 현재 기준, 5 = 최고난도, 6 = 무작위)</span></label>
@@ -328,8 +382,7 @@
 <button id="createGame">제작 시작</button>
     <div class="progressOuter"><div class="progressInner" id="progressBar"></div></div>
     <div class="analyzeStatus" id="analyzeStatus">
-      진행사항 2.10: 원형 노트를 색 막대형 노트로 바꾸고, 모바일 나가기 버튼을 진행률 옆으로 이동했습니다.
-    </div>
+      진행사항 2.11: 판정 영역, 히트 이펙트, 콤보 연출, 타격음을 추가한 상용 UI 1차 버전입니다.</div>
     <div class="legend">
       <div>❤️ 멜로디</div>
       <div>♦️ 킥</div>
@@ -368,12 +421,14 @@
     </div>
   </div>
   <div class="laneWrap" id="laneWrap">
-    <div class="lane" data-lane="0"></div>
-    <div class="lane" data-lane="1"></div>
-    <div class="lane" data-lane="2"></div>
-    <div class="lane" data-lane="3"></div>
+    <div class="lane" data-lane="0"><div class="laneGlow"></div></div>
+    <div class="lane" data-lane="1"><div class="laneGlow"></div></div>
+    <div class="lane" data-lane="2"><div class="laneGlow"></div></div>
+    <div class="lane" data-lane="3"><div class="laneGlow"></div></div>
   </div>
+  <div class="judgementZone"></div>
   <div class="hitLine"></div>
+  <div class="comboPop" id="comboPop"><div class="num" id="comboPopNum">0</div><div class="label">COMBO</div></div>
   <div class="judge" id="judge">PERFECT</div>
   <div class="countdown" id="countdown">3</div>
   <div class="resultPanel" id="resultPanel">
@@ -1144,11 +1199,12 @@ function escapeHtml(str){
   }
 
   function buildNoteElements(){
-    $$('.lane').forEach(l=>l.innerHTML='');
+    $$('.lane').forEach(l=>l.innerHTML='<div class="laneGlow"></div>');
     const lanes = $$('.lane');
     for(const n of activeNotes){
       const el = document.createElement('div');
       el.className = `note ${n.long?'long':''} ${n.type}`;
+      el.dataset.lane = String(n.lane);
       el.textContent = n.symbol;
       if(n.long){
         el.style.height = Math.max(80, 58 + n.duration * 120) + 'px';
@@ -1186,6 +1242,10 @@ function escapeHtml(str){
         combo = 0;
         updateScore();
         showJudge('MISS');
+        playHitSound('miss');
+        gameScreen.classList.remove('screenShake');
+        void gameScreen.offsetWidth;
+        gameScreen.classList.add('screenShake');
       }
     }
     rafId = requestAnimationFrame(loop);
@@ -1258,7 +1318,7 @@ function escapeHtml(str){
     }
     activeNotes = [];
     $('#resultPanel')?.classList.remove('show');
-    $$('.lane').forEach(l=>l.innerHTML='');
+    $$('.lane').forEach(l=>l.innerHTML='<div class="laneGlow"></div>');
   }
 
   function hitLane(lane){
@@ -1289,6 +1349,55 @@ function escapeHtml(str){
     return false;
   }
 
+
+  let sfxCtx = null;
+  function playHitSound(kind='hit'){
+    try{
+      if(!sfxCtx) sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = sfxCtx.createOscillator();
+      const gain = sfxCtx.createGain();
+      const now = sfxCtx.currentTime;
+      const freq = kind === 'perfect' ? 880 : kind === 'good' ? 660 : kind === 'ok' ? 440 : 180;
+      osc.type = kind === 'miss' ? 'sawtooth' : 'triangle';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(80, freq * .55), now + .07);
+      gain.gain.setValueAtTime(kind === 'miss' ? .06 : .045, now);
+      gain.gain.exponentialRampToValueAtTime(.001, now + .08);
+      osc.connect(gain);
+      gain.connect(sfxCtx.destination);
+      osc.start(now);
+      osc.stop(now + .09);
+    }catch(e){}
+  }
+
+  function spawnBurst(lane, judge){
+    const laneEl = $(`.lane[data-lane="${lane}"]`);
+    const wrap = $('#game');
+    if(!laneEl || !wrap) return;
+    const lr = laneEl.getBoundingClientRect();
+    const wr = wrap.getBoundingClientRect();
+    const x = lr.left + lr.width / 2 - wr.left;
+    const y = wr.height - 112;
+    const b = document.createElement('div');
+    b.className = 'hitBurst';
+    b.style.left = x + 'px';
+    b.style.top = y + 'px';
+    if(judge === 'PERFECT') b.style.borderColor = 'rgba(86,227,159,.98)';
+    if(judge === 'GOOD') b.style.borderColor = 'rgba(108,200,255,.98)';
+    if(judge === 'OK') b.style.borderColor = 'rgba(255,166,77,.98)';
+    wrap.appendChild(b);
+    setTimeout(()=>b.remove(), 360);
+  }
+
+  function showComboPop(){
+    if(combo <= 0 || combo % 10 !== 0) return;
+    const pop = $('#comboPop');
+    $('#comboPopNum').textContent = String(combo);
+    pop.classList.remove('show');
+    void pop.offsetWidth;
+    pop.classList.add('show');
+  }
+
   function applyHit(n, points, text){
     n.hit = true;
     combo++;
@@ -1300,6 +1409,9 @@ function escapeHtml(str){
     showJudge(text);
     const cls = text === 'PERFECT' ? 'flash-perfect' : text === 'GOOD' ? 'flash-good' : 'flash-ok';
     flashPad(n.lane, cls);
+    spawnBurst(n.lane, text);
+    playHitSound(text === 'PERFECT' ? 'perfect' : text === 'GOOD' ? 'good' : 'ok');
+    showComboPop();
   }
 
   function flashPad(lane, cls='keyflash'){
