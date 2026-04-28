@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>셀-프 리듬게임 ver2.8</title>
+<title>셀-프 리듬게임 ver2.8.1</title>
 <style>
   :root{
     --bg:#07070c;
@@ -233,6 +233,7 @@
     padding:12px 0;border-radius:14px;background:rgba(255,255,255,.08);
     font-weight:1000;color:rgba(255,255,255,.74);
     box-shadow:none;border:1px solid rgba(255,255,255,.12);
+    cursor:pointer;position:relative;z-index:2;pointer-events:auto;
   }
   .diffBtn.active{
     background:linear-gradient(135deg,#ff5f9e,#7c5cff);
@@ -256,7 +257,7 @@
 </style>
 </head>
 <body>
-<div class="version">ver2.8</div>
+<div class="version">ver2.8.1</div>
 
 <section id="home" class="screen active">
   <div class="title">셀-프 리듬게임</div>
@@ -287,11 +288,12 @@
         <button type="button" class="diffBtn" data-diff="4">4</button>
         <button type="button" class="diffBtn" data-diff="5">5</button>
       </div>
+      <input id="selectedDifficulty" type="hidden" value="3" />
     </div>
 <button id="createGame">제작 시작</button>
     <div class="progressOuter"><div class="progressInner" id="progressBar"></div></div>
     <div class="analyzeStatus" id="analyzeStatus">
-      진행사항 2.8: 난이도 1~5단계를 적용하고, 5단계는 빠른 멜로디를 적극적으로 노트화합니다.
+      진행사항 2.8.1: 난이도 1~5 선택 버튼 오류를 수정했습니다.
     </div>
     <div class="legend">
       <div>❤️ 멜로디</div>
@@ -487,8 +489,9 @@ function saveSettings(){
       $('#createGame').disabled = true;
       setStatus('MP3를 읽는 중...', 8);
       const audioBuffer = await decodeAudioFile(file);
+      selectedDifficulty = Number($('#selectedDifficulty')?.value || selectedDifficulty || 3);
 
-      setStatus('진행사항 2 분석 중: 보컬 구간을 찾는 중...', 22);
+      setStatus(`진행사항 2 분석 중: 난이도 ${selectedDifficulty}로 분석 중...`, 22);
       await waitFrame();
 
       const notes = analyzeMusic(audioBuffer, selectedDifficulty, (msg,p)=>setStatus(msg,p));
