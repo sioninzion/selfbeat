@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>셀-프 리듬게임 ver2.10</title>
+<title>셀-프 리듬게임 ver2.10.1</title>
 <style>
   :root{
     --bg:#07070c;
@@ -182,33 +182,23 @@
     z-index:10;
     overflow:hidden;
   }
-  .note::after{
+  
+.note[data-lane="0"]{border-color:#ff4d4d;background:rgba(255,77,77,.2)}
+.note[data-lane="1"]{border-color:#ffa64d;background:rgba(255,166,77,.2)}
+.note[data-lane="2"]{border-color:#4dff88;background:rgba(77,255,136,.2)}
+.note[data-lane="3"]{border-color:#4da6ff;background:rgba(77,166,255,.2)}
+.note::after{
+
     content:"";
     position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
     width:76%;height:5px;border-radius:999px;
     background:rgba(255,255,255,.96);
     box-shadow:0 0 14px rgba(255,255,255,.9);
   }
-  .note.kick{
-    background:rgba(255,76,76,.25);
-    border-color:rgba(255,76,76,.95);
-    box-shadow:0 0 22px rgba(255,76,76,.38),0 8px 20px rgba(0,0,0,.35);
-  }
-  .note.snare{
-    background:rgba(255,157,45,.25);
-    border-color:rgba(255,157,45,.95);
-    box-shadow:0 0 22px rgba(255,157,45,.38),0 8px 20px rgba(0,0,0,.35);
-  }
-  .note.melody,.note.vocal{
-    background:rgba(78,224,122,.24);
-    border-color:rgba(78,224,122,.95);
-    box-shadow:0 0 22px rgba(78,224,122,.38),0 8px 20px rgba(0,0,0,.35);
-  }
-  .note.hat,.note.event{
-    background:rgba(80,169,255,.24);
-    border-color:rgba(80,169,255,.95);
-    box-shadow:0 0 22px rgba(80,169,255,.38),0 8px 20px rgba(0,0,0,.35);
-  }
+  
+  
+  
+  
   .controls{
     position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
     width:min(96vw,620px);display:grid;grid-template-columns:repeat(4,1fr);gap:8px;z-index:30;
@@ -302,7 +292,7 @@
 </style>
 </head>
 <body>
-<div class="version">ver2.10</div>
+<div class="version">ver2.10.1</div>
 
 <section id="home" class="screen active">
   <div class="title">셀-프 리듬게임</div>
@@ -435,6 +425,7 @@
   let rafId = null;
   let startTime = 0;
   let score = 0;
+  let speedMultiplier = 1;
   let combo = 0;
   let judgeCounts = {perfect:0, good:0, ok:0, miss:0};
   let resultShown = false;
@@ -796,6 +787,7 @@ function saveSettings(){
           long:false,
           duration:0,
           symbol:symbols[n.lane],
+          'data-lane': n.lane,
           hit:false,
           missed:false
         };
@@ -1175,7 +1167,7 @@ function escapeHtml(str){
     const txt = $('#songProgressText');
     if(bar) bar.style.width = pct.toFixed(1) + '%';
     if(txt) txt.textContent = Math.floor(pct) + '%';
-    const travel = 1.32;
+    const travel = 1.32 / speedMultiplier;
     const laneHeight = $('.lane').clientHeight;
     const hitY = laneHeight - 32;
 
@@ -1412,3 +1404,11 @@ function escapeHtml(str){
 </script>
 </body>
 </html>
+const speedRange = document.getElementById('speedRange');
+const speedValue = document.getElementById('speedValue');
+if(speedRange){
+  speedRange.addEventListener('input', e=>{
+    speedMultiplier = parseFloat(e.target.value);
+    speedValue.textContent = speedMultiplier.toFixed(1) + 'x';
+  });
+}
